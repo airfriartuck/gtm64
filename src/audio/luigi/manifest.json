@@ -1,0 +1,33 @@
+{
+  "provider": "ElevenLabs",
+  "model": "eleven_v4",
+  "voice": {
+    "id": "QzTKubutNn9TjrB7Xb2Q",
+    "name": "Jerry B. - New York Italian Mobster"
+  },
+  "clips": [
+    {
+      "key": "enter",
+      "file": "enter.mp3",
+      "text": "All right, brother. You drive. I'll watch for trouble.",
+      "generationId": "2BKSNZ06iwgfEVUtw22G",
+      "durationSeconds": 3.12
+    },
+    {
+      "key": "impact",
+      "file": "impact.mp3",
+      "text": "That's a wall, genius. We're casing the castle, not demolishing it.",
+      "generationId": "efzRSDkrkNBsIUVDSnM6",
+      "durationSeconds": 4.88
+    }
+  ],
+  "missingLines": [
+    "speed",
+    "turn",
+    "hill",
+    "reverse",
+    "idle",
+    "cruise"
+  ],
+  "generationBlock": "ElevenLabs reported rate limits and Free Tier access disabled for unusual account activity. Missing lines retain the existing ROM passenger reactions."
+}

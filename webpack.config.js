@@ -8,8 +8,20 @@ module.exports = {
     module: {
         rules: [
             {
+                test: /\.mp3$/,
+                use: [require.resolve('./audioAssetLoader.cjs')]
+            },
+            {
+                test: /vendor\/libsm64-audio\/audio\.js$/,
+                use: [{ loader: 'babel-loader', options: {
+                    babelrc: false,
+                    configFile: false,
+                    presets: [['@babel/preset-env', { targets: { chrome: '70' } }]]
+                } }]
+            },
+            {
                 test: /\.(js)$/,
-                exclude: /node_modules/,
+                exclude: /node_modules|vendor\/libsm64-audio\/audio\.js/,
                 use: ['babel-loader']
             },
             {
@@ -29,7 +41,8 @@ module.exports = {
         extensions: ['*', '.js']
     },
     devServer: {
-        port: 80
+        host: "127.0.0.1",
+        port: 8080
     },
     plugins: [
         new HtmlWebPackPlugin({

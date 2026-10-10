@@ -33,6 +33,46 @@ npm run start
 
 You should now be able to access the website with the game from a web browser by typing "localhost" into the address bar.
 
+## Audio
+
+Original Mario sound effects, voices, jingles and level music play from the
+US ROM you supply. After upgrading from an older build, select your ROM again
+once to add its audio banks to the local asset cache. Click **Start Game** to
+enable audio; with autostart, click the page or press a key. **Mute audio** is
+available in the top right. Playback pauses while the tab is hidden.
+
+Music follows each area's original music setting. Starting in the Castle Grounds
+also plays the original title theme; it yields to level music when you enter
+another area. Returning to the grounds uses its normal outdoor ambience.
+
+The audio engine uses [libsm64](https://github.com/libsm64/libsm64), compiled to
+WebAssembly. Its source, license and reproducible build instructions are in
+[vendor/libsm64-audio](vendor/libsm64-audio/README.md). No ROM audio is bundled
+or fetched from another server.
+
+## Garden car
+
+A red car is parked on the starting lawn in the Castle Grounds (Main Map).
+Walk up to it and press **E** or the game's **B** button to enter or exit.
+Use **Up / Down** to accelerate forward or reverse and **Left / Right** to steer.
+The gamepad's left stick works too. Hold the jump or crouch button to brake
+(**Space / Z** with the default keyboard controls).
+
+The car pitches and banks with the terrain, including hill entrances and crests.
+It stops at walls, deep water, extreme slopes and abrupt drops. Exit into an open
+space beside it; if there isn't room, move to another patch of grass first.
+It stays parked when you exit and resets when the Castle Grounds reloads.
+
+Luigi joins Mario on the starting lawn, wearing a green outfit and L cap.
+He follows Mario's path around the Castle Grounds, automatically rides in the
+passenger seat when Mario enters the car, and follows again after Mario exits.
+
+While riding, Luigi delivers contextual crime-game-style banter with subtitles
+above the driving controls. His audible reactions reuse Mario's original ROM
+exclamations at 1.18× pitch/speed; the recordings do not speak the full subtitle
+sentences. Mario's voice and the music keep their normal pitch. Dialogue respects
+the audio mute button, pauses between lines, and stops when you leave the car.
+
 ## Build instructions With Docker - Windows, Mac, or Linux
 
 ### First install Docker

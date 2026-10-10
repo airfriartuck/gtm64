@@ -28,6 +28,9 @@ import { bubbly_tree_geo                     } from "../../actors/tree/geo.inc"
 import { castle_door_geo,
             metal_door_geo                   } from "../../actors/door/geo.inc"
 import { warp_pipe_geo                       } from "../../actors/warp_pipe/geo.inc"
+import { MODEL_GARDEN_CAR, MODEL_LUIGI_COMPANION } from "../../include/model_ids"
+import { luigi_geo } from "../../actors/luigi/geo.inc"
+import { garden_car_geo } from "../../actors/garden_car/geo.inc"
 
 const script_func_local_1 = [
     WARP_NODE(/*id*/ 0x00, /*destLevel*/ LEVEL_CASTLE, /*destArea*/ 0x01, /*destNode*/ 0x00, /*flags*/ WARP_NO_CHECKPOINT),
@@ -113,6 +116,8 @@ export const level_castle_grounds_entry = [
     JUMP_LINK(script_func_global_11),
     JUMP_LINK(script_func_global_16),
     LOAD_MODEL_FROM_GEO(MODEL_LEVEL_GEOMETRY_03,           castle_grounds_geo_0006F4),
+    LOAD_MODEL_FROM_GEO(MODEL_GARDEN_CAR, garden_car_geo),
+    LOAD_MODEL_FROM_GEO(MODEL_LUIGI_COMPANION, luigi_geo),
     LOAD_MODEL_FROM_GEO(MODEL_BOB_BUBBLY_TREE,             bubbly_tree_geo),
     LOAD_MODEL_FROM_GEO(MODEL_CASTLE_GROUNDS_WARP_PIPE,    warp_pipe_geo),
     LOAD_MODEL_FROM_GEO(MODEL_CASTLE_GROUNDS_CASTLE_DOOR,  castle_door_geo),
@@ -121,6 +126,8 @@ export const level_castle_grounds_entry = [
     LOAD_MODEL_FROM_GEO(MODEL_CASTLE_GROUNDS_FLAG,         castle_grounds_geo_000660),
     LOAD_MODEL_FROM_GEO(MODEL_CASTLE_GROUNDS_CANNON_GRILL, castle_grounds_geo_000724),
     AREA(1, castle_grounds_geo_00073C),
+        OBJECT(MODEL_GARDEN_CAR, -900, 260, 4400, 0, 180, 0, 0, 'bhvGardenCar'),
+        OBJECT(MODEL_LUIGI_COMPANION, -1500, 260, 4800, 0, 180, 0, 0, 'bhvLuigiCompanion'),
         WARP_NODE(/*id*/ 0xF1, /*destLevel*/ LEVEL_CASTLE_GROUNDS, /*destArea*/ 0x01, /*destNode*/ 0x03, /*flags*/ WARP_NO_CHECKPOINT),
         JUMP_LINK(script_func_local_1),
         JUMP_LINK(script_func_local_2),

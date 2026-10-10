@@ -1,4 +1,6 @@
 import * as _Linker from "./Linker"
+import { bhv_garden_car_loop } from "./GardenCar"
+import { bhv_luigi_companion_loop } from "./LuigiCompanion"
 
 import { ADD_INT, ADD_FLOAT, ANIMATE, ANIMATE_TEXTURE, BEGIN, BEGIN_LOOP, BEGIN_REPEAT, BILLBOARD, BREAK,
          CALL, CALL_NATIVE, DEACTIVATE, DEBUGGER, DELAY, DELAY_VAR, DISABLE_RENDERING,
@@ -1167,6 +1169,25 @@ const bhvStaticObject = [
     OR_INT(oFlags, OBJ_FLAG_UPDATE_GFX_POS_AND_ANGLE),
     BREAK(),
 ]
+
+const bhvGardenCar = [
+    BEGIN(OBJ_LIST_DEFAULT, 'bhvGardenCar'),
+    OR_INT(oFlags, OBJ_FLAG_UPDATE_GFX_POS_AND_ANGLE | OBJ_FLAG_ACTIVE_FROM_AFAR),
+    BEGIN_LOOP(),
+        CALL_NATIVE(bhv_garden_car_loop),
+    END_LOOP(),
+]
+
+gLinker.behaviors.bhvGardenCar = bhvGardenCar
+
+const bhvLuigiCompanion = [
+    BEGIN(OBJ_LIST_DEFAULT, 'bhvLuigiCompanion'),
+    OR_INT(oFlags, OBJ_FLAG_UPDATE_GFX_POS_AND_ANGLE | OBJ_FLAG_ACTIVE_FROM_AFAR),
+    BEGIN_LOOP(),
+        CALL_NATIVE(bhv_luigi_companion_loop),
+    END_LOOP(),
+]
+gLinker.behaviors.bhvLuigiCompanion = bhvLuigiCompanion
 
 const bhvCastleFloorTrap = [
     BEGIN(OBJ_LIST_DEFAULT, 'bhvCastleFloorTrap'),
@@ -3316,8 +3337,8 @@ const bhvBirdsSoundLoop = [
 
 const bhvAmbientSounds = [
     BEGIN(OBJ_LIST_DEFAULT, 'bhvAmbientSounds'),
-    CALL_NATIVE('bhv_ambient_sounds_init'),
     BEGIN_LOOP(),
+        CALL_NATIVE('bhv_ambient_sounds_init'),
     END_LOOP(),
 ];
 

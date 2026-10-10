@@ -1,8 +1,9 @@
 import * as IDB from "idb-keyval"
 var msgpack = require("msgpack-lite")
 import { assets } from "./assets"
+import { originalAudio, AUDIO_ROM_START, AUDIO_ROM_END } from "./audio/OriginalAudio"
 
-const textureVersion = 40  // bump this if you change ROM import
+const textureVersion = 41  // Includes the original ROM audio banks and sequences.
 
 let loadedGameAssets = false
 const url = new URL(window.location.href)
@@ -1376,6 +1377,7 @@ import { seq_01_cutscene_collect_star, seq_02_menu_title_screen, seq_03_level_gr
 
 
 const loadDataIntoGame = (data) => {
+    originalAudio.prepare(data['audio/rom'])
 
     amp_seg8_texture_08000F18.push(...data["actors/amp/amp_electricity.rgba16.png"])
     amp_seg8_texture_08001318.push(...data["actors/amp/amp_eyes.rgba16.png"])
@@ -2878,6 +2880,7 @@ const extractAssetsFromRom = (romBufferData) => {
     }
 
     const extractedData = {}
+    extractedData['audio/rom'] = Buffer.from(romBufferData.slice(AUDIO_ROM_START, AUDIO_ROM_END))
 
     ///// process assets by type
     const assetsAiff = []

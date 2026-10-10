@@ -3,6 +3,10 @@ import { checkForRom } from "./romTextureLoader.js"
 import { GameInstance as Game } from "./game/Game"
 import { playerInputUpdate } from "./player_input_manager"
 import { n64GfxProcessorInstance as GFX } from "./graphics/n64GfxProcessor"
+import { originalAudio } from "./audio/OriginalAudio"
+import { SEQ_MENU_TITLE_SCREEN } from "./include/seq_ids"
+import { getGardenCar } from './game/GardenCar'
+import { luigiCarDialogue } from './game/LuigiCarDialogue'
 
 const send_display_list = (gfx_list) => { GFX.run(gfx_list) }
 
@@ -17,7 +21,15 @@ const produce_one_frame = () => {
     playerInputUpdate() /// Keyboard buttons / joystick process to game input commands
     GFX.start_frame()
     Game.main_loop_one_iteration()
-    /// Audio TODO
+    try {
+        originalAudio.update(gLinker.Area.gCurrentArea)
+        luigiCarDialogue.update(getGardenCar(), performance.now() / 1000, window.playerInput)
+    } catch (error) {
+        originalAudio.pause()
+        originalAudio.engine = null
+        audioButton.textContent = 'Audio unavailable'
+        console.error('Original audio playback failed:', error)
+    }
 
     const finished_frame = performance.now()
     totalFrameTimeBuffer.push(finished_frame - start_frame)
@@ -157,8 +169,19 @@ window.cheats = {
     healOnWarp: false
 }
 
-const startGame = () => {
+const startGame = async () => {
+    if (gameStarted) return
     gameStarted = true
+    originalAudio.openingMusic = document.getElementById('mapSelect').value === '16' ? SEQ_MENU_TITLE_SCREEN : 0
+
+    // Resume within the click/keypress gesture before waiting for ROM decoding.
+    originalAudio.unlock().catch(error => console.error('Audio requires a click or keypress:', error))
+    try {
+        await originalAudio.ready
+    } catch (error) {
+        audioButton.textContent = 'Audio unavailable'
+        console.error('Unable to start original audio:', error)
+    }
 
     document.getElementById("startbutton").classList.remove('btn-success')
     document.getElementById("startbutton").classList.add('btn-light')
@@ -166,6 +189,23 @@ const startGame = () => {
 
     main_func()
 }
+
+const audioButton = document.getElementById('audioButton')
+audioButton.addEventListener('click', () => {
+    originalAudio.setMuted(!originalAudio.muted)
+    audioButton.textContent = originalAudio.muted ? 'Unmute audio' : 'Mute audio'
+    audioButton.setAttribute('aria-pressed', String(originalAudio.muted))
+    originalAudio.unlock().catch(error => console.error('Audio:', error))
+})
+const unlockAudio = () => {
+    if (gameStarted && !document.hidden) originalAudio.unlock().catch(() => {})
+}
+document.addEventListener('pointerdown', unlockAudio)
+document.addEventListener('keydown', unlockAudio)
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) originalAudio.pause()
+    else unlockAudio()
+})
 
 window.onload = () => {
     const url = new URL(window.location.href)

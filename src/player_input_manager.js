@@ -331,6 +331,8 @@ export const playerInputUpdate = () => {
     let buttonDownRt = gamepadFinal.rt || keyboardFinal.rt
 
     window.playerInput = {
+        buttonPressedVehicle: Boolean(keyboardButtons.e) && !window.playerInput.buttonDownVehicle,
+        buttonDownVehicle: Boolean(keyboardButtons.e),
         stickX, stickY,
         stickMag: mag,
 

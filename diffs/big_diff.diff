@@ -1,0 +1,570 @@
+diff --git a/README.md b/README.md
+index e05fa26e..828eff0c 100644
+--- a/README.md
++++ b/README.md
+@@ -33,6 +33,46 @@ npm run start
+ 
+ You should now be able to access the website with the game from a web browser by typing "localhost" into the address bar.
+ 
++## Audio
++
++Original Mario sound effects, voices, jingles and level music play from the
++US ROM you supply. After upgrading from an older build, select your ROM again
++once to add its audio banks to the local asset cache. Click **Start Game** to
++enable audio; with autostart, click the page or press a key. **Mute audio** is
++available in the top right. Playback pauses while the tab is hidden.
++
++Music follows each area's original music setting. Starting in the Castle Grounds
++also plays the original title theme; it yields to level music when you enter
++another area. Returning to the grounds uses its normal outdoor ambience.
++
++The audio engine uses [libsm64](https://github.com/libsm64/libsm64), compiled to
++WebAssembly. Its source, license and reproducible build instructions are in
++[vendor/libsm64-audio](vendor/libsm64-audio/README.md). No ROM audio is bundled
++or fetched from another server.
++
++## Garden car
++
++A red car is parked on the starting lawn in the Castle Grounds (Main Map).
++Walk up to it and press **E** or the game's **B** button to enter or exit.
++Use **Up / Down** to accelerate forward or reverse and **Left / Right** to steer.
++The gamepad's left stick works too. Hold the jump or crouch button to brake
++(**Space / Z** with the default keyboard controls).
++
++The car pitches and banks with the terrain, including hill entrances and crests.
++It stops at walls, deep water, extreme slopes and abrupt drops. Exit into an open
++space beside it; if there isn't room, move to another patch of grass first.
++It stays parked when you exit and resets when the Castle Grounds reloads.
++
++Luigi joins Mario on the starting lawn, wearing a green outfit and L cap.
++He follows Mario's path around the Castle Grounds, automatically rides in the
++passenger seat when Mario enters the car, and follows again after Mario exits.
++
++While riding, Luigi delivers contextual crime-game-style banter with subtitles
++above the driving controls. His audible reactions reuse Mario's original ROM
++exclamations at 1.18× pitch/speed; the recordings do not speak the full subtitle
++sentences. Mario's voice and the music keep their normal pitch. Dialogue respects
++the audio mute button, pauses between lines, and stops when you leave the car.
++
+ ## Build instructions With Docker - Windows, Mac, or Linux
+ 
+ ### First install Docker
+diff --git a/package.json b/package.json
+index 59640987..ac251748 100644
+--- a/package.json
++++ b/package.json
+@@ -24,7 +24,7 @@
+     "serve": "node serveStatic.js",
+     "build": "webpack --mode production",
+     "build:dev": "webpack --mode development",
+-    "start": "webpack-dev-server --host 0.0.0.0 --disable-host-check  --mode development"
++    "start": "webpack-dev-server --host 127.0.0.1 --port 8080 --mode development"
+   },
+   "babel": {
+     "presets": [
+diff --git a/src/actors/mario/model.inc.js b/src/actors/mario/model.inc.js
+index f4333651..9ac319e7 100644
+--- a/src/actors/mario/model.inc.js
++++ b/src/actors/mario/model.inc.js
+@@ -19,7 +19,7 @@ const mario_blue_lights_group = gdSPDefLights1(
+ );
+ 
+ // 0x04000018 # solid color red - left & right arm, torso (tshirt part), caps - all poly types
+-const mario_red_lights_group = gdSPDefLights1(
++export const mario_red_lights_group = gdSPDefLights1(
+     0x7f, 0x00, 0x00,
+     0xff, 0x00, 0x00, 0x28, 0x28, 0x28
+ );
+diff --git a/src/audio/external.js b/src/audio/external.js
+index 1397c237..d0c3b75c 100644
+--- a/src/audio/external.js
++++ b/src/audio/external.js
+@@ -1,59 +1,17 @@
+-import { SOUND_BANK_COUNT } from "../include/sounds"
+-import { SEQ_EVENT_SOLVE_PUZZLE } from "../include/seq_ids"
+-
+-export const SEQ_PLAYER_LEVEL            = 0  // Level background music
+-export const SEQ_PLAYER_ENV              = 1  // Misc music like the puzzle jingle
+-export const SEQ_PLAYER_SFX              = 2  // Sound effects
+-
+-// sBackgroundMusicMaxTargetVolume and sBackgroundMusicTargetVolume use the 0x80
+-// bit to indicate that they are set, and the rest of the bits for the actual value
+-const TARGET_VOLUME_IS_PRESENT_FLAG = 0x80
+-const TARGET_VOLUME_VALUE_MASK = 0x7f
+-const TARGET_VOLUME_UNSET = 0x00
+-
+-export const SEQUENCE_ARGS = (priority, seqId) => {return (priority << 8) | seqId}
+-
+-const sSoundMovingSpeed = new Array(SOUND_BANK_COUNT)
+-let sBackgroundMusicMaxTargetVolume = 0
+-export const gGlobalSoundSource = [0.0, 0.0, 0.0]
+-
+-export const set_sound_moving_speed = (bank, speed) => {
+-    sSoundMovingSpeed[bank] = speed
+-}
+-
+-export const play_sound = (soundBits, pos) => {
+-}
+-
+-export const play_secondary_music = (seqId, bgMusicVolume, volume, fadeTimer) => {
+-}
+-
+-export const func_80321080 = (fadeTimer) => {
+-}
+-
+-/**
+- * Plays the puzzle jingle. Plays the dadada dadada *dadada* jingle
+- * that usually plays when you solve a "puzzle", like chests, talking to
+- * yoshi, releasing chain chomp, opening the pyramid top, etc.
+- *
+- * Called from threads: thread5_game_loop
+- */
+-export const play_puzzle_jingle = () => {
+-    seq_player_play_sequence(SEQ_PLAYER_ENV, SEQ_EVENT_SOLVE_PUZZLE, 0)
+-    sBackgroundMusicMaxTargetVolume = TARGET_VOLUME_IS_PRESENT_FLAG | 20
+-    begin_background_music_fade(50)
+-}
+-
+-export const play_music = (player, seqArgs, fadeTimer) => {
+-}
+-
+-const begin_background_music_fade = (fadeDuration) => {
+-}
+-
+-const seq_player_play_sequence = (player, seqId, arg2) => {
+-}
+-
+-export const seq_player_lower_volume = (player, fadeDuration, percentage) => {
+-}
+-
+-export const seq_player_unlower_volume = (player, fadeDuration) => {
+-}
+\ No newline at end of file
++import { originalAudio } from "./OriginalAudio"
++
++export const SEQ_PLAYER_LEVEL = 0
++export const SEQ_PLAYER_ENV = 1
++export const SEQ_PLAYER_SFX = 2
++export const SEQUENCE_ARGS = (priority, seqId) => (priority << 8) | seqId
++export const gGlobalSoundSource = [0, 0, 0]
++
++export const play_sound = (soundBits, pos) => originalAudio.playSound(soundBits, pos)
++export const play_music = (player, seqArgs, fadeTimer) => originalAudio.call('play_music', player, seqArgs, fadeTimer)
++export const play_secondary_music = (seqId, bgMusicVolume, volume, fadeTimer) => originalAudio.call('play_secondary_music', seqId, bgMusicVolume, volume, fadeTimer)
++export const func_80321080 = fadeTimer => originalAudio.call('func_80321080', fadeTimer)
++export const play_puzzle_jingle = () => originalAudio.call('play_puzzle_jingle')
++export const set_sound_moving_speed = (bank, speed) => originalAudio.call('set_sound_moving_speed', bank, speed)
++export const seq_player_play_sequence = (player, seqId, arg2) => originalAudio.call('seq_player_play_sequence', player, seqId, arg2)
++export const seq_player_lower_volume = (player, fadeDuration, percentage) => originalAudio.call('seq_player_lower_volume', player, fadeDuration, percentage)
++export const seq_player_unlower_volume = (player, fadeDuration) => originalAudio.call('seq_player_unlower_volume', player, fadeDuration)
+diff --git a/src/engine/GeoRenderer.js b/src/engine/GeoRenderer.js
+index fa2bdc6e..f0308b6b 100644
+--- a/src/engine/GeoRenderer.js
++++ b/src/engine/GeoRenderer.js
+@@ -399,11 +399,11 @@ class GeoRenderer {
+             MathUtil.mtxf_scale_vec3f(this.gMatStack[this.gMatStackIndex + 1], this.gMatStack[this.gMatStackIndex + 1], object.gfx.scale)
+ 
+             object.gfx.throwMatrix = this.gMatStack[++this.gMatStackIndex]
+-            object.gfx.cameraToObject = [ 
+-                this.gMatStack[this.gMatStackIndex][3][0],
+-                this.gMatStack[this.gMatStackIndex][3][1],
+-                this.gMatStack[this.gMatStackIndex][3][2]
+-            ]
++            // Audio retains this vector as the object's source identity.
++            if (!object.gfx.cameraToObject) object.gfx.cameraToObject = [0, 0, 0]
++            for (let i = 0; i < 3; i++) {
++                object.gfx.cameraToObject[i] = this.gMatStack[this.gMatStackIndex][3][i]
++            }
+ 
+             if (object.gfx.animInfo.curAnim) {
+                 this.geo_set_animation_globals(object.gfx.animInfo, hasAnimation)
+diff --git a/src/engine/LevelCommands.js b/src/engine/LevelCommands.js
+index 95e1322c..ff8ad812 100644
+--- a/src/engine/LevelCommands.js
++++ b/src/engine/LevelCommands.js
+@@ -162,7 +162,10 @@ class LevelCommands {
+     }
+ 
+     set_background_music(settingsPreset,  seq) {
+-        console.log("ignoring set_background_music()")
++        if (this.sCurrAreaIndex !== -1) {
++            Area.gAreas[this.sCurrAreaIndex].musicParam = settingsPreset
++            Area.gAreas[this.sCurrAreaIndex].musicParam2 = seq
++        }
+         this.sCurrentScript.index++
+     }
+ 
+diff --git a/src/game/BehaviorData.js b/src/game/BehaviorData.js
+index 53dd82bf..da7e1652 100644
+--- a/src/game/BehaviorData.js
++++ b/src/game/BehaviorData.js
+@@ -1,4 +1,6 @@
+ import * as _Linker from "./Linker"
++import { bhv_garden_car_loop } from "./GardenCar"
++import { bhv_luigi_companion_loop } from "./LuigiCompanion"
+ 
+ import { ADD_INT, ADD_FLOAT, ANIMATE, ANIMATE_TEXTURE, BEGIN, BEGIN_LOOP, BEGIN_REPEAT, BILLBOARD, BREAK,
+          CALL, CALL_NATIVE, DEACTIVATE, DEBUGGER, DELAY, DELAY_VAR, DISABLE_RENDERING,
+@@ -1168,6 +1170,25 @@ const bhvStaticObject = [
+     BREAK(),
+ ]
+ 
++const bhvGardenCar = [
++    BEGIN(OBJ_LIST_DEFAULT, 'bhvGardenCar'),
++    OR_INT(oFlags, OBJ_FLAG_UPDATE_GFX_POS_AND_ANGLE | OBJ_FLAG_ACTIVE_FROM_AFAR),
++    BEGIN_LOOP(),
++        CALL_NATIVE(bhv_garden_car_loop),
++    END_LOOP(),
++]
++
++gLinker.behaviors.bhvGardenCar = bhvGardenCar
++
++const bhvLuigiCompanion = [
++    BEGIN(OBJ_LIST_DEFAULT, 'bhvLuigiCompanion'),
++    OR_INT(oFlags, OBJ_FLAG_UPDATE_GFX_POS_AND_ANGLE | OBJ_FLAG_ACTIVE_FROM_AFAR),
++    BEGIN_LOOP(),
++        CALL_NATIVE(bhv_luigi_companion_loop),
++    END_LOOP(),
++]
++gLinker.behaviors.bhvLuigiCompanion = bhvLuigiCompanion
++
+ const bhvCastleFloorTrap = [
+     BEGIN(OBJ_LIST_DEFAULT, 'bhvCastleFloorTrap'),
+     DISABLE_RENDERING(),
+@@ -3316,8 +3337,8 @@ const bhvBirdsSoundLoop = [
+ 
+ const bhvAmbientSounds = [
+     BEGIN(OBJ_LIST_DEFAULT, 'bhvAmbientSounds'),
+-    CALL_NATIVE('bhv_ambient_sounds_init'),
+     BEGIN_LOOP(),
++        CALL_NATIVE('bhv_ambient_sounds_init'),
+     END_LOOP(),
+ ];
+ 
+diff --git a/src/game/Mario.js b/src/game/Mario.js
+index 83612526..fed2e76d 100644
+--- a/src/game/Mario.js
++++ b/src/game/Mario.js
+@@ -29,6 +29,7 @@ import { mario_execute_automatic_action } from "./MarioActionsAutomatic"
+ import { int16, sins, coss } from "../utils"
+ import * as MarioConstants from "../include/mario_constants"
+ import { gAudioRandom } from "../audio/data"
++import { updateGardenCar } from "./GardenCar"
+ 
+ import {
+    SOUND_BANK_MOVING, SOUND_TERRAIN_WATER, SOUND_TERRAIN_SAND, SOUND_TERRAIN_SNOW,
+@@ -2136,6 +2137,12 @@ const mario_update_hitbox_and_cap_model = (m) => {
+ }
+ 
+ export const execute_mario_action = () => {
++    const m = LevelUpdate.gMarioState
++    const group = m.action & ACT_GROUP_MASK
++    if (updateGardenCar(m, ACT_IDLE, group === ACT_GROUP_STATIONARY || group === ACT_GROUP_MOVING)) {
++        update_mario_info_for_cam(m)
++        return 0
++    }
+     if (LevelUpdate.gMarioState.action) {
+         LevelUpdate.gMarioState.marioObj.gfx.flags &= ~GRAPH_RENDER_INVISIBLE
+         mario_reset_bodystate(LevelUpdate.gMarioState)
+diff --git a/src/game/ObjBehaviors2.js b/src/game/ObjBehaviors2.js
+index 0af36274..007a8cfb 100644
+--- a/src/game/ObjBehaviors2.js
++++ b/src/game/ObjBehaviors2.js
+@@ -444,14 +444,9 @@ export const obj_smooth_turn = (wrapper, targetAngle, targetSpeedProportion, acc
+ //this lived above random_linear_offset in the source,
+ export const obj_roll_to_match_yaw_turn = (targetYaw, maxRoll, rollSpeed) => {
+     const o = gLinker.ObjectListProcessor.gCurrentObject;
+-    const w = {}
+-
+-    const targetRoll = o.rawData[oMoveAngleYaw] - targetYaw;
+-    w.value = targetRoll;
+-    const clampReturn = clamp_s16(w, -maxRoll, maxRoll);
+-    targetRoll = w.value;
+-    obj_face_roll_approach(clampReturn, rollSpeed);
+-    //unsure if this needs a return, no return in the original C
++    const targetRoll = { value: int16(o.rawData[oMoveAngleYaw] - targetYaw) };
++    clamp_s16(targetRoll, -maxRoll, maxRoll);
++    obj_face_roll_approach(targetRoll.value, rollSpeed);
+ }
+ 
+ export const random_linear_offset = (base, range) => {
+@@ -906,4 +901,4 @@ export const obj_spit_fire = (relativePosX, relativePosY, relativePosZ, scale, m
+         obj.rawData[oSmallPiranhaFlameModel] = model
+         obj.rawData[oMoveAnglePitch] = movePitch
+     }
+-}
+\ No newline at end of file
++}
+diff --git a/src/game/SoundInit.js b/src/game/SoundInit.js
+index e5c9dd45..b75a46d1 100644
+--- a/src/game/SoundInit.js
++++ b/src/game/SoundInit.js
+@@ -1,7 +1,18 @@
++import { originalAudio } from "../audio/OriginalAudio"
++import { play_sound, gGlobalSoundSource } from "../audio/external"
++import { SOUND_MENU_MARIO_CASTLE_WARP } from "../include/sounds"
++import { SEQ_EVENT_POWERUP, SEQ_EVENT_METAL_CAP, SEQ_VARIATION } from "../include/seq_ids"
++
+ export const raise_background_noise = (a) => {}
+ export const play_infinite_stairs_music = () => {}
+-export const stop_shell_music = () => {}
+-export const stop_cap_music = () => {}
+-export const fadeout_cap_music = () => {}
+-export const fadeout_music = (fadeOutTime) => {}
+-export const play_painting_eject_sound = () => {}
++export const stop_shell_music = () => originalAudio.call('stop_background_music', SEQ_EVENT_POWERUP | SEQ_VARIATION)
++export const stop_cap_music = () => {
++    originalAudio.call('stop_background_music', SEQ_EVENT_POWERUP)
++    originalAudio.call('stop_background_music', SEQ_EVENT_METAL_CAP)
++}
++export const fadeout_cap_music = () => {
++    originalAudio.call('fadeout_background_music', SEQ_EVENT_POWERUP, 600)
++    originalAudio.call('fadeout_background_music', SEQ_EVENT_METAL_CAP, 600)
++}
++export const fadeout_music = fadeOutTime => originalAudio.call('func_803210D4', fadeOutTime)
++export const play_painting_eject_sound = () => play_sound(SOUND_MENU_MARIO_CASTLE_WARP, gGlobalSoundSource)
+diff --git a/src/include/model_ids.js b/src/include/model_ids.js
+index a638180e..2b4a576c 100644
+--- a/src/include/model_ids.js
++++ b/src/include/model_ids.js
+@@ -560,6 +560,8 @@ export const MODEL_PEACH                       = 0xDE        // peach_geo
+ export const MODEL_CHUCKYA                     = 0xDF        // chuckya_geo
+ export const MODEL_WHITE_PUFF                  = 0xE0        // white_puff_geo
+ export const MODEL_TRAJECTORY_MARKER_BALL      = 0xE1        // bowling_ball_track_geo - duplicate used in SSL Pyramid small sized and as a track ball
++export const MODEL_GARDEN_CAR                  = 0xE2
++export const MODEL_LUIGI_COMPANION             = 0xE3
+ 
+ // Menu Models (overwrites Level Geometry IDs)
+ export const MODEL_MAIN_MENU_MARIO_SAVE_BUTTON         = MODEL_LEVEL_GEOMETRY_03   // main_menu_geo_0001D0
+diff --git a/src/index.html b/src/index.html
+index 626af278..50bcd1bf 100644
+--- a/src/index.html
++++ b/src/index.html
+@@ -76,6 +76,8 @@
+                 </div>
+             </div>
+ 
++            <button id="audioButton" type="button" class="btn btn-light" aria-pressed="false"
++                style="position:fixed;top:12px;right:12px;z-index:1001">Mute audio</button>
+             <canvas id="gameCanvas" width="640" height="480" style="cursor:none; padding: 30px 0 5px 0"></canvas>
+ 
+             <div class="container-fluid">
+diff --git a/src/index.js b/src/index.js
+index b991b537..5df9c790 100644
+--- a/src/index.js
++++ b/src/index.js
+@@ -3,6 +3,10 @@ import { checkForRom } from "./romTextureLoader.js"
+ import { GameInstance as Game } from "./game/Game"
+ import { playerInputUpdate } from "./player_input_manager"
+ import { n64GfxProcessorInstance as GFX } from "./graphics/n64GfxProcessor"
++import { originalAudio } from "./audio/OriginalAudio"
++import { SEQ_MENU_TITLE_SCREEN } from "./include/seq_ids"
++import { getGardenCar } from './game/GardenCar'
++import { luigiCarDialogue } from './game/LuigiCarDialogue'
+ 
+ const send_display_list = (gfx_list) => { GFX.run(gfx_list) }
+ 
+@@ -17,7 +21,15 @@ const produce_one_frame = () => {
+     playerInputUpdate() /// Keyboard buttons / joystick process to game input commands
+     GFX.start_frame()
+     Game.main_loop_one_iteration()
+-    /// Audio TODO
++    try {
++        originalAudio.update(gLinker.Area.gCurrentArea)
++        luigiCarDialogue.update(getGardenCar(), performance.now() / 1000, window.playerInput)
++    } catch (error) {
++        originalAudio.pause()
++        originalAudio.engine = null
++        audioButton.textContent = 'Audio unavailable'
++        console.error('Original audio playback failed:', error)
++    }
+ 
+     const finished_frame = performance.now()
+     totalFrameTimeBuffer.push(finished_frame - start_frame)
+@@ -157,8 +169,19 @@ window.cheats = {
+     healOnWarp: false
+ }
+ 
+-const startGame = () => {
++const startGame = async () => {
++    if (gameStarted) return
+     gameStarted = true
++    originalAudio.openingMusic = document.getElementById('mapSelect').value === '16' ? SEQ_MENU_TITLE_SCREEN : 0
++
++    // Resume within the click/keypress gesture before waiting for ROM decoding.
++    originalAudio.unlock().catch(error => console.error('Audio requires a click or keypress:', error))
++    try {
++        await originalAudio.ready
++    } catch (error) {
++        audioButton.textContent = 'Audio unavailable'
++        console.error('Unable to start original audio:', error)
++    }
+ 
+     document.getElementById("startbutton").classList.remove('btn-success')
+     document.getElementById("startbutton").classList.add('btn-light')
+@@ -167,6 +190,23 @@ const startGame = () => {
+     main_func()
+ }
+ 
++const audioButton = document.getElementById('audioButton')
++audioButton.addEventListener('click', () => {
++    originalAudio.setMuted(!originalAudio.muted)
++    audioButton.textContent = originalAudio.muted ? 'Unmute audio' : 'Mute audio'
++    audioButton.setAttribute('aria-pressed', String(originalAudio.muted))
++    originalAudio.unlock().catch(error => console.error('Audio:', error))
++})
++const unlockAudio = () => {
++    if (gameStarted && !document.hidden) originalAudio.unlock().catch(() => {})
++}
++document.addEventListener('pointerdown', unlockAudio)
++document.addEventListener('keydown', unlockAudio)
++document.addEventListener('visibilitychange', () => {
++    if (document.hidden) originalAudio.pause()
++    else unlockAudio()
++})
++
+ window.onload = () => {
+     const url = new URL(window.location.href)
+ 
+diff --git a/src/levels/bob/script.js b/src/levels/bob/script.js
+index b2de9610..1454d77d 100644
+--- a/src/levels/bob/script.js
++++ b/src/levels/bob/script.js
+@@ -1,6 +1,6 @@
+ import { AREA, CALL, CALL_LOOP, CLEAR_LEVEL, END_AREA, EXIT, INIT_LEVEL, JUMP_LINK,
+          LOAD_MODEL_FROM_GEO, MACRO_OBJECTS, MARIO, MARIO_POS, OBJECT, OBJECT_WITH_ACTS,
+-         RETURN, SHOW_DIALOG, SLEEP_BEFORE_EXIT, TERRAIN, TERRAIN_TYPE, WARP_NODE, WARP_NO_CHECKPOINT
++         RETURN, SHOW_DIALOG, SLEEP_BEFORE_EXIT, TERRAIN, TERRAIN_TYPE, WARP_NODE, WARP_NO_CHECKPOINT, SET_BACKGROUND_MUSIC
+ } from "../../engine/LevelCommands"
+ 
+ import { script_func_global_1, script_func_global_4, script_func_global_15 } from "../global_scripts"
+@@ -14,6 +14,7 @@ import { MODEL_MARIO, MODEL_BOB_BARS_GRILLS, MODEL_BOB_BUBBLY_TREE, MODEL_BOB_CH
+ } from "../../include/model_ids"
+ 
+ import { LEVEL_BOB, LEVEL_CASTLE } from "../level_defines_constants"
++import { SEQ_LEVEL_GRASS } from "../../include/seq_ids"
+ 
+ import { DIALOG_000, DIALOG_001, DIALOG_002, DIALOG_003 } from "../../text/us/dialogs"
+ 
+@@ -97,7 +98,7 @@ export const level_bob_entry = [
+         TERRAIN(/*terrainData*/ bob_seg7_collision_level),
+         MACRO_OBJECTS(/*objList*/ bob_seg7_macro_objs),
+         SHOW_DIALOG(/*index*/ 0x00, DIALOG_000),
+-        // SET_BACKGROUND_MUSIC(/*settingsPreset*/ 0x0000, /*seq*/ SEQ_LEVEL_GRASS),
++        SET_BACKGROUND_MUSIC(/*settingsPreset*/ 0x0000, /*seq*/ SEQ_LEVEL_GRASS),
+         TERRAIN_TYPE(/*terrainType*/ TERRAIN_GRASS),
+     END_AREA(),
+ 
+diff --git a/src/levels/castle_grounds/script.js b/src/levels/castle_grounds/script.js
+index 7df49bc5..6e72e517 100644
+--- a/src/levels/castle_grounds/script.js
++++ b/src/levels/castle_grounds/script.js
+@@ -28,6 +28,9 @@ import { bubbly_tree_geo                     } from "../../actors/tree/geo.inc"
+ import { castle_door_geo,
+             metal_door_geo                   } from "../../actors/door/geo.inc"
+ import { warp_pipe_geo                       } from "../../actors/warp_pipe/geo.inc"
++import { MODEL_GARDEN_CAR, MODEL_LUIGI_COMPANION } from "../../include/model_ids"
++import { luigi_geo } from "../../actors/luigi/geo.inc"
++import { garden_car_geo } from "../../actors/garden_car/geo.inc"
+ 
+ const script_func_local_1 = [
+     WARP_NODE(/*id*/ 0x00, /*destLevel*/ LEVEL_CASTLE, /*destArea*/ 0x01, /*destNode*/ 0x00, /*flags*/ WARP_NO_CHECKPOINT),
+@@ -113,6 +116,8 @@ export const level_castle_grounds_entry = [
+     JUMP_LINK(script_func_global_11),
+     JUMP_LINK(script_func_global_16),
+     LOAD_MODEL_FROM_GEO(MODEL_LEVEL_GEOMETRY_03,           castle_grounds_geo_0006F4),
++    LOAD_MODEL_FROM_GEO(MODEL_GARDEN_CAR, garden_car_geo),
++    LOAD_MODEL_FROM_GEO(MODEL_LUIGI_COMPANION, luigi_geo),
+     LOAD_MODEL_FROM_GEO(MODEL_BOB_BUBBLY_TREE,             bubbly_tree_geo),
+     LOAD_MODEL_FROM_GEO(MODEL_CASTLE_GROUNDS_WARP_PIPE,    warp_pipe_geo),
+     LOAD_MODEL_FROM_GEO(MODEL_CASTLE_GROUNDS_CASTLE_DOOR,  castle_door_geo),
+@@ -121,6 +126,8 @@ export const level_castle_grounds_entry = [
+     LOAD_MODEL_FROM_GEO(MODEL_CASTLE_GROUNDS_FLAG,         castle_grounds_geo_000660),
+     LOAD_MODEL_FROM_GEO(MODEL_CASTLE_GROUNDS_CANNON_GRILL, castle_grounds_geo_000724),
+     AREA(1, castle_grounds_geo_00073C),
++        OBJECT(MODEL_GARDEN_CAR, -900, 260, 4400, 0, 180, 0, 0, 'bhvGardenCar'),
++        OBJECT(MODEL_LUIGI_COMPANION, -1500, 260, 4800, 0, 180, 0, 0, 'bhvLuigiCompanion'),
+         WARP_NODE(/*id*/ 0xF1, /*destLevel*/ LEVEL_CASTLE_GROUNDS, /*destArea*/ 0x01, /*destNode*/ 0x03, /*flags*/ WARP_NO_CHECKPOINT),
+         JUMP_LINK(script_func_local_1),
+         JUMP_LINK(script_func_local_2),
+diff --git a/src/player_input_manager.js b/src/player_input_manager.js
+index d630b467..28f32d9d 100644
+--- a/src/player_input_manager.js
++++ b/src/player_input_manager.js
+@@ -331,6 +331,8 @@ export const playerInputUpdate = () => {
+     let buttonDownRt = gamepadFinal.rt || keyboardFinal.rt
+ 
+     window.playerInput = {
++        buttonPressedVehicle: Boolean(keyboardButtons.e) && !window.playerInput.buttonDownVehicle,
++        buttonDownVehicle: Boolean(keyboardButtons.e),
+         stickX, stickY,
+         stickMag: mag,
+ 
+diff --git a/src/romTextureLoader.js b/src/romTextureLoader.js
+index 5070ccc7..43920986 100644
+--- a/src/romTextureLoader.js
++++ b/src/romTextureLoader.js
+@@ -1,8 +1,9 @@
+ import * as IDB from "idb-keyval"
+ var msgpack = require("msgpack-lite")
+ import { assets } from "./assets"
++import { originalAudio, AUDIO_ROM_START, AUDIO_ROM_END } from "./audio/OriginalAudio"
+ 
+-const textureVersion = 40  // bump this if you change ROM import
++const textureVersion = 41  // Includes the original ROM audio banks and sequences.
+ 
+ let loadedGameAssets = false
+ const url = new URL(window.location.href)
+@@ -1376,6 +1377,7 @@ import { seq_01_cutscene_collect_star, seq_02_menu_title_screen, seq_03_level_gr
+ 
+ 
+ const loadDataIntoGame = (data) => {
++    originalAudio.prepare(data['audio/rom'])
+ 
+     amp_seg8_texture_08000F18.push(...data["actors/amp/amp_electricity.rgba16.png"])
+     amp_seg8_texture_08001318.push(...data["actors/amp/amp_eyes.rgba16.png"])
+@@ -2878,6 +2880,7 @@ const extractAssetsFromRom = (romBufferData) => {
+     }
+ 
+     const extractedData = {}
++    extractedData['audio/rom'] = Buffer.from(romBufferData.slice(AUDIO_ROM_START, AUDIO_ROM_END))
+ 
+     ///// process assets by type
+     const assetsAiff = []
+diff --git a/webpack.config.js b/webpack.config.js
+index 9a7ea754..e2732734 100644
+--- a/webpack.config.js
++++ b/webpack.config.js
+@@ -7,9 +7,21 @@ const CircularDependencyPlugin = require('circular-dependency-plugin')
+ module.exports = {
+     module: {
+         rules: [
++            {
++                test: /\.mp3$/,
++                use: [require.resolve('./audioAssetLoader.cjs')]
++            },
++            {
++                test: /vendor\/libsm64-audio\/audio\.js$/,
++                use: [{ loader: 'babel-loader', options: {
++                    babelrc: false,
++                    configFile: false,
++                    presets: [['@babel/preset-env', { targets: { chrome: '70' } }]]
++                } }]
++            },
+             {
+                 test: /\.(js)$/,
+-                exclude: /node_modules/,
++                exclude: /node_modules|vendor\/libsm64-audio\/audio\.js/,
+                 use: ['babel-loader']
+             },
+             {
+@@ -29,7 +41,8 @@ module.exports = {
+         extensions: ['*', '.js']
+     },
+     devServer: {
+-        port: 80
++        host: "127.0.0.1",
++        port: 8080
+     },
+     plugins: [
+         new HtmlWebPackPlugin({

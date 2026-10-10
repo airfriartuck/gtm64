@@ -162,7 +162,10 @@ class LevelCommands {
     }
 
     set_background_music(settingsPreset,  seq) {
-        console.log("ignoring set_background_music()")
+        if (this.sCurrAreaIndex !== -1) {
+            Area.gAreas[this.sCurrAreaIndex].musicParam = settingsPreset
+            Area.gAreas[this.sCurrAreaIndex].musicParam2 = seq
+        }
         this.sCurrentScript.index++
     }
 

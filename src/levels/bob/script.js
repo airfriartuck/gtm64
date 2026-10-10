@@ -1,6 +1,6 @@
 import { AREA, CALL, CALL_LOOP, CLEAR_LEVEL, END_AREA, EXIT, INIT_LEVEL, JUMP_LINK,
          LOAD_MODEL_FROM_GEO, MACRO_OBJECTS, MARIO, MARIO_POS, OBJECT, OBJECT_WITH_ACTS,
-         RETURN, SHOW_DIALOG, SLEEP_BEFORE_EXIT, TERRAIN, TERRAIN_TYPE, WARP_NODE, WARP_NO_CHECKPOINT
+         RETURN, SHOW_DIALOG, SLEEP_BEFORE_EXIT, TERRAIN, TERRAIN_TYPE, WARP_NODE, WARP_NO_CHECKPOINT, SET_BACKGROUND_MUSIC
 } from "../../engine/LevelCommands"
 
 import { script_func_global_1, script_func_global_4, script_func_global_15 } from "../global_scripts"
@@ -14,6 +14,7 @@ import { MODEL_MARIO, MODEL_BOB_BARS_GRILLS, MODEL_BOB_BUBBLY_TREE, MODEL_BOB_CH
 } from "../../include/model_ids"
 
 import { LEVEL_BOB, LEVEL_CASTLE } from "../level_defines_constants"
+import { SEQ_LEVEL_GRASS } from "../../include/seq_ids"
 
 import { DIALOG_000, DIALOG_001, DIALOG_002, DIALOG_003 } from "../../text/us/dialogs"
 
@@ -97,7 +98,7 @@ export const level_bob_entry = [
         TERRAIN(/*terrainData*/ bob_seg7_collision_level),
         MACRO_OBJECTS(/*objList*/ bob_seg7_macro_objs),
         SHOW_DIALOG(/*index*/ 0x00, DIALOG_000),
-        // SET_BACKGROUND_MUSIC(/*settingsPreset*/ 0x0000, /*seq*/ SEQ_LEVEL_GRASS),
+        SET_BACKGROUND_MUSIC(/*settingsPreset*/ 0x0000, /*seq*/ SEQ_LEVEL_GRASS),
         TERRAIN_TYPE(/*terrainType*/ TERRAIN_GRASS),
     END_AREA(),
 

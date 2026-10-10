@@ -399,11 +399,11 @@ class GeoRenderer {
             MathUtil.mtxf_scale_vec3f(this.gMatStack[this.gMatStackIndex + 1], this.gMatStack[this.gMatStackIndex + 1], object.gfx.scale)
 
             object.gfx.throwMatrix = this.gMatStack[++this.gMatStackIndex]
-            object.gfx.cameraToObject = [ 
-                this.gMatStack[this.gMatStackIndex][3][0],
-                this.gMatStack[this.gMatStackIndex][3][1],
-                this.gMatStack[this.gMatStackIndex][3][2]
-            ]
+            // Audio retains this vector as the object's source identity.
+            if (!object.gfx.cameraToObject) object.gfx.cameraToObject = [0, 0, 0]
+            for (let i = 0; i < 3; i++) {
+                object.gfx.cameraToObject[i] = this.gMatStack[this.gMatStackIndex][3][i]
+            }
 
             if (object.gfx.animInfo.curAnim) {
                 this.geo_set_animation_globals(object.gfx.animInfo, hasAnimation)

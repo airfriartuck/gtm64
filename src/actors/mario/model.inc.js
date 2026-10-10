@@ -19,7 +19,7 @@ const mario_blue_lights_group = gdSPDefLights1(
 );
 
 // 0x04000018 # solid color red - left & right arm, torso (tshirt part), caps - all poly types
-const mario_red_lights_group = gdSPDefLights1(
+export const mario_red_lights_group = gdSPDefLights1(
     0x7f, 0x00, 0x00,
     0xff, 0x00, 0x00, 0x28, 0x28, 0x28
 );

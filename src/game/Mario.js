@@ -29,6 +29,7 @@ import { mario_execute_automatic_action } from "./MarioActionsAutomatic"
 import { int16, sins, coss } from "../utils"
 import * as MarioConstants from "../include/mario_constants"
 import { gAudioRandom } from "../audio/data"
+import { updateGardenCar } from "./GardenCar"
 
 import {
    SOUND_BANK_MOVING, SOUND_TERRAIN_WATER, SOUND_TERRAIN_SAND, SOUND_TERRAIN_SNOW,
@@ -2136,6 +2137,12 @@ const mario_update_hitbox_and_cap_model = (m) => {
 }
 
 export const execute_mario_action = () => {
+    const m = LevelUpdate.gMarioState
+    const group = m.action & ACT_GROUP_MASK
+    if (updateGardenCar(m, ACT_IDLE, group === ACT_GROUP_STATIONARY || group === ACT_GROUP_MOVING)) {
+        update_mario_info_for_cam(m)
+        return 0
+    }
     if (LevelUpdate.gMarioState.action) {
         LevelUpdate.gMarioState.marioObj.gfx.flags &= ~GRAPH_RENDER_INVISIBLE
         mario_reset_bodystate(LevelUpdate.gMarioState)

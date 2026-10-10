@@ -444,14 +444,9 @@ export const obj_smooth_turn = (wrapper, targetAngle, targetSpeedProportion, acc
 //this lived above random_linear_offset in the source,
 export const obj_roll_to_match_yaw_turn = (targetYaw, maxRoll, rollSpeed) => {
     const o = gLinker.ObjectListProcessor.gCurrentObject;
-    const w = {}
-
-    const targetRoll = o.rawData[oMoveAngleYaw] - targetYaw;
-    w.value = targetRoll;
-    const clampReturn = clamp_s16(w, -maxRoll, maxRoll);
-    targetRoll = w.value;
-    obj_face_roll_approach(clampReturn, rollSpeed);
-    //unsure if this needs a return, no return in the original C
+    const targetRoll = { value: int16(o.rawData[oMoveAngleYaw] - targetYaw) };
+    clamp_s16(targetRoll, -maxRoll, maxRoll);
+    obj_face_roll_approach(targetRoll.value, rollSpeed);
 }
 
 export const random_linear_offset = (base, range) => {
