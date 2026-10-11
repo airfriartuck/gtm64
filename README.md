@@ -161,7 +161,7 @@ Hold **Q** (or **ZR** on the gamepad) to draw Mario's pistol. Like GTA San
 Andreas, he locks on to the enemy that is closest to where the camera is
 looking, weighing distance and angle, and skips enemies behind walls or hills.
 A marker above the target shows its health from green to red. While aiming, the
-stick strafes, **C-left / C-right** (**J / L**) switch to the next enemy on
+stick strafes (Mario walks forward or back, or sidesteps, keeping the gun on the target), **C-left / C-right** (**J / L**) switch to the next enemy on
 that side, and jump cancels the aim. The targeting is ported from
 [gta-reversed](https://github.com/gta-reversed/gta-reversed)
 (`CPlayerPed::EvaluateTarget` and related functions).

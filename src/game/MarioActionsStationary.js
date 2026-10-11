@@ -10,7 +10,9 @@ import {
     stationary_ground_step, perform_ground_step
 } from "./MarioStep"
 
-import { ACT_GUN_AIM, GROUND_STEP_LEFT_GROUND, MARIO_ANIM_FIRST_PUNCH, set_anim_to_frame } from "./Mario"
+import { ACT_GUN_AIM, GROUND_STEP_LEFT_GROUND, MARIO_ANIM_FIRST_PUNCH, MARIO_ANIM_WALKING, MARIO_ANIM_SIDESTEP_LEFT,
+    MARIO_ANIM_SIDESTEP_RIGHT, set_anim_to_frame } from "./Mario"
+import { pinParts, strafeDirection } from "./MarioAimAnimation"
 import { updateWeaponAim, stopWeaponAim } from "./MarioWeapon"
 import { sins, coss, int16 } from "../utils"
 
@@ -951,6 +953,31 @@ const check_common_stationary_cancels = (m) => {
 // Hold the aim button to draw the gun. Mario turns to the locked target (or
 // the camera's direction) and can strafe slowly without turning away.
 const AIM_FRAME = 10 // arm fully extended in the first punch
+
+// Strafing walks forward/back or sidesteps, with the gun arm held out. The
+// animation IDs are read on use: Mario.js isn't initialised when this loads.
+const AIM_STRAFE = {
+    forward: { id: 0x1001, base: () => MARIO_ANIM_WALKING },
+    backward: { id: 0x1002, base: () => MARIO_ANIM_WALKING, reverse: true },
+    left: { id: 0x1003, base: () => MARIO_ANIM_SIDESTEP_LEFT },
+    right: { id: 0x1004, base: () => MARIO_ANIM_SIDESTEP_RIGHT },
+}
+const set_aim_strafe_animation = (m, direction, speed) => {
+    const strafe = AIM_STRAFE[direction]
+    if (!strafe.anim) strafe.anim = pinParts(m.animation.animList[strafe.base()],
+        m.animation.animList[MARIO_ANIM_FIRST_PUNCH], AIM_FRAME, undefined, { reverse: strafe.reverse })
+    const info = m.marioObj.gfx.animInfo
+    m.animation.targetAnim = strafe.anim
+    if (info.animID !== strafe.id) {
+        info.animID = strafe.id
+        info.curAnim = strafe.anim
+        info.animYTrans = m.unkB0
+        info.animFrame = strafe.anim.unk04
+        info.animFrameAccelAssist = strafe.anim.unk04 << 16
+    }
+    // Step cadence follows strafing speed, like Mario's normal walk.
+    info.animAccel = Math.round(Math.max(0.5, speed / 3) * 0x10000)
+}
 const act_gun_aim = (m) => {
     if (!window.playerInput.buttonDownAim) {
         stopWeaponAim()
@@ -978,10 +1005,11 @@ const act_gun_aim = (m) => {
             stopWeaponAim()
             return set_mario_action(m, ACT_FREEFALL, 0)
         }
-    } else {
-        stationary_ground_step(m)
+        set_aim_strafe_animation(m, strafeDirection(m.intendedYaw, m.faceAngle[1]), speed)
+        return false
     }
 
+    stationary_ground_step(m)
     set_mario_animation(m, MARIO_ANIM_FIRST_PUNCH)
     set_anim_to_frame(m, AIM_FRAME)
     return false

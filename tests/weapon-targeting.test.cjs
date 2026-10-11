@@ -352,3 +352,41 @@ test('R cycles weapons, each with its own clip, and the hand shows the selected 
     assert.equal(weapon.weaponState.ammo[3].clip, 49)
     assert.equal(weapon.weaponState.ammo[0].clip, 17)
 })
+
+test('strafing animations walk the legs while the upper body holds the aiming pose', () => {
+    const r = runtime()
+    const { pinParts, strafeDirection, AIM_PARTS } = r.load('game/MarioAimAnimation.js')
+    const { gMarioAnimData } = r.load('actors/mario/marioAnimData.js')
+    const walk = gMarioAnimData[0x48], punch = gMarioAnimData[0x67]
+    // 3 root translation channels + 20 parts × 3 rotations, as the composite assumes.
+    for (const anim of [walk, punch, gMarioAnimData[0x7F], gMarioAnimData[0x80]]) {
+        assert.equal(anim.indices.filter(v => v !== null).length / 2, 63)
+    }
+    const aim = pinParts(walk, punch, 10)
+    const value = (anim, part, axis, frame) => {
+        const i = (3 + part * 3 + axis) * 2
+        return anim.values[anim.indices[i + 1] + Math.min(frame, anim.indices[i] - 1)]
+    }
+    assert.equal(aim.unk08, walk.unk08, 'keeps the walk cycle length')
+    assert.equal(aim.flags, walk.flags)
+    for (const frame of [0, 20, 60]) {
+        for (const part of AIM_PARTS) for (let axis = 0; axis < 3; axis++) {
+            // Frame 10 is past the 5-frame punch, so it holds the punch's last (fully extended) value.
+            assert.equal(value(aim, part, axis, frame), value(punch, part, axis, 4), `part ${part} pinned`)
+        }
+        for (const part of [12, 13, 14, 17, 18]) for (let axis = 0; axis < 3; axis++) {
+            assert.equal(value(aim, part, axis, frame), value(walk, part, axis, frame), `leg part ${part} walks`)
+        }
+        // The root translation still bobs with the walk.
+        assert.equal(aim.values[aim.indices[3] + Math.min(frame, aim.indices[2] - 1)],
+            walk.values[walk.indices[3] + Math.min(frame, walk.indices[2] - 1)])
+    }
+    assert.notEqual(walk.indices, aim.indices, 'the original animation is untouched')
+    assert.equal(pinParts(walk, punch, 10, AIM_PARTS, { reverse: true }).flags & 2, 2, 'backwards plays reversed')
+
+    assert.equal(strafeDirection(0, 0), 'forward')
+    assert.equal(strafeDirection(0x8000, 0), 'backward')
+    assert.equal(strafeDirection(0x4000, 0), 'left')
+    assert.equal(strafeDirection(-0x4000, 0), 'right')
+    assert.equal(strafeDirection(0x4000 - 100, -0x8000 + 0x4000), 'backward', 'wraps around ±180°')
+})
