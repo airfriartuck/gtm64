@@ -496,3 +496,80 @@ test('processes every car triangle through the graphics command interpreter', ()
     assert.equal(r.context.draws.reduce((sum, draw) => sum + draw.count, 0), triangles)
     assert.ok(r.context.draws.every(draw => draw.vertices.every(Number.isFinite)))
 })
+
+// Deterministic Math.random stand-in for Luigi's wandering.
+const seeded = seed => () => {
+    seed = (seed + 0x6D2B79F5) | 0
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+}
+const yawDelta = (a, b) => ((b - a + 32768) % 65536 + 65536) % 65536 - 32768
+
+test('Luigi wanders on his own near an idle Mario, turning and accelerating smoothly', () => {
+    const { updateLuigi } = runtime().load('game/LuigiCompanion.js')
+    const world = { collision: flatCollision, random: seeded(7) }
+    const mario = [0, 260, 0]
+    const luigi = { pos: [0, 260, -180], path: [], yaw: 0 }
+    const poses = new Set()
+    let furthest = 0, yaw = luigi.yaw, speed = 0, wanders = 0, previousMode
+    for (let frame = 0; frame < 3000; frame++) {
+        const pose = updateLuigi(luigi, mario, null, world)
+        poses.add(pose)
+        if (luigi.mode === 'wander' && previousMode !== 'wander') wanders++
+        previousMode = luigi.mode
+        const away = Math.hypot(luigi.pos[0], luigi.pos[2])
+        furthest = Math.max(furthest, away)
+        assert.ok(away < 900 + 1, `stays on the leash (${away})`)
+        assert.ok(Math.abs(yawDelta(yaw, luigi.yaw)) <= 0x0C00 + 1, 'no instant turns')
+        assert.ok(Math.abs(luigi.speed - speed) <= 5 + 1e-9, 'no instant speed changes')
+        yaw = luigi.yaw
+        speed = luigi.speed
+    }
+    assert.ok(wanders >= 5, `explores repeatedly (${wanders})`)
+    assert.ok(furthest > 400)
+    for (const pose of ['idle', 'walking', 'running', 'hopping']) assert.ok(poses.has(pose), pose)
+})
+
+test('Luigi avoids lava and water and comes back when Mario sets off', () => {
+    const { updateLuigi } = runtime().load('game/LuigiCompanion.js')
+    const lava = { normal: { y: 1 }, type: 1 }
+    const collision = { ...flatCollision,
+        find_floor(x, y, z, wrapper) { wrapper.floor = x > 200 ? lava : flatFloor; return 260 },
+        find_water_level: (x, z) => z < -200 ? 400 : -11000 }
+    const world = { collision, random: seeded(3) }
+    const luigi = { pos: [0, 260, 150], path: [], yaw: 0 }
+    let mario = [0, 260, 0]
+    for (let frame = 0; frame < 3000; frame++) {
+        updateLuigi(luigi, mario, null, world)
+        assert.ok(luigi.pos[0] <= 200 && luigi.pos[2] >= -200, `stayed on safe ground at ${luigi.pos}`)
+    }
+    // Mario runs off east along the safe strip's edge; Luigi gives up wandering and follows.
+    collision.find_floor = (x, y, z, wrapper) => { wrapper.floor = flatFloor; return 260 }
+    for (let frame = 0; frame < 200; frame++) {
+        mario = [0, 260, frame * 15]
+        updateLuigi(luigi, mario, null, world)
+    }
+    assert.equal(luigi.mode, 'follow')
+    assert.ok(Math.hypot(luigi.pos[0] - mario[0], luigi.pos[2] - mario[2]) < 400, 'caught up')
+})
+
+test('Luigi explores the real castle grounds without leaving safe ground', () => {
+    const r = runtime()
+    const collision = castleGroundCollision(r)
+    const { updateLuigi, groundAt } = r.load('game/LuigiCompanion.js')
+    const world = { collision, random: seeded(11) }
+    const floor = {}
+    const mario = [-1300, collision.find_floor(-1300, 500, 4500, floor), 4500]
+    const luigi = { pos: [-1500, collision.find_floor(-1500, 500, 4800, {}), 4800], path: [], yaw: 0 }
+    let moved = 0, previous = [...luigi.pos]
+    for (let frame = 0; frame < 4000; frame++) {
+        updateLuigi(luigi, mario, null, world)
+        moved += Math.hypot(luigi.pos[0] - previous[0], luigi.pos[2] - previous[2])
+        previous = [...luigi.pos]
+        const ground = groundAt(collision, luigi.pos[0], luigi.pos[1], luigi.pos[2])
+        assert.notEqual(ground, null, `unsafe ground at ${luigi.pos.map(Math.round)}`)
+        assert.ok(Math.abs(ground - luigi.pos[1]) < 2, `floating or sunk at ${luigi.pos.map(Math.round)}`)
+    }
+    assert.ok(moved > 3000, `explores the lawn (${Math.round(moved)} units)`)
+})

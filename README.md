@@ -64,8 +64,12 @@ space beside it; if there isn't room, move to another patch of grass first.
 It stays parked when you exit and resets when the Castle Grounds reloads.
 
 Luigi joins Mario on the starting lawn, wearing a green outfit and L cap.
-He follows Mario's path around the Castle Grounds, automatically rides in the
-passenger seat when Mario enters the car, and follows again after Mario exits.
+He follows Mario's path around the Castle Grounds, easing between walking and
+running. When Mario stands still for a moment, Luigi wanders the nearby lawn by
+himself: he walks or runs to spots within reach, looks around, and sometimes hops,
+while avoiding the moat, steep slopes and walls. Once Mario moves on, Luigi runs
+back and follows again. He automatically rides in the passenger seat when Mario
+enters the car, and follows again after Mario exits.
 
 While riding, Luigi delivers contextual crime-game-style banter with subtitles
 above the driving controls. His audible reactions reuse Mario's original ROM
