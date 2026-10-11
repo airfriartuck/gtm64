@@ -50,6 +50,29 @@ WebAssembly. Its source, license and reproducible build instructions are in
 [vendor/libsm64-audio](vendor/libsm64-audio/README.md). No ROM audio is bundled
 or fetched from another server.
 
+## Gamepad
+
+Default gamepad controls are laid out for a Nintendo Switch Pro Controller,
+following Super Mario 3D All-Stars:
+
+| Switch Pro Controller | Action |
+| --- | --- |
+| Left stick | Move |
+| Right stick | Camera (C buttons) |
+| A | Jump |
+| B | Punch, kick and fire |
+| ZL | Crouch (N64 Z) |
+| R | Change camera mode |
+| + | Start / pause |
+| ZR | Aim |
+| L | Next gun |
+
+Buttons are read by position in the browser's standard gamepad layout, so
+other controllers work with the same layout: the bottom face button is B and
+the right face button is A. Every button can be remapped in the gamepad
+controls panel. If you saved custom controls before, choose **Load Default
+Controls** to switch to this layout.
+
 ## Garden car
 
 A red car is parked on the starting lawn in the Castle Grounds (Main Map).
@@ -134,7 +157,7 @@ With this, you can make Mario fly, go fast, and a lot of other things.
 
 ## Aiming
 
-Hold **Q** (or the gamepad's left bumper) to draw Mario's pistol. Like GTA San
+Hold **Q** (or **ZR** on the gamepad) to draw Mario's pistol. Like GTA San
 Andreas, he locks on to the enemy that is closest to where the camera is
 looking, weighing distance and angle, and skips enemies behind walls or hills.
 A marker above the target shows its health from green to red. While aiming, the
@@ -144,7 +167,7 @@ that side, and jump cancels the aim. The targeting is ported from
 (`CPlayerPed::EvaluateTarget` and related functions).
 
 Press **B** while aiming to fire (hold it for automatic weapons) and **R** (or
-the right bumper) to switch guns. Enemies have GTA-style health (100, or 250
+**L** on the gamepad) to switch guns. Enemies have GTA-style health (100, or 250
 for Bullies and Chuckyas). When it runs out, Bob-ombs explode and other
 enemies take a kick, so each reacts as it does in SM64: Goombas are defeated,
 Bullies are knocked back and can be shot again. Without a lock, shots go straight ahead and hit the nearest enemy in

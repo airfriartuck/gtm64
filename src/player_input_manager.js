@@ -122,16 +122,23 @@ const keyboardButtonMapping = {
 }
 const defaultKeyboardButtonMapping = { ...keyboardButtonMapping }
 
-const gamepadButtonMapping = { //works for xbox
-    a: 0,
-    b: 2,
-    start: 9,
-    z: 6,
+// Defaults follow a Nintendo Switch Pro Controller in the browser's standard
+// layout, where buttons are numbered by position (0 bottom, 1 right, 2 left,
+// 3 top), and match Super Mario 3D All-Stars: A jumps, B attacks, ZL crouches
+// (N64 Z), R changes the camera, + is Start and the right stick is the C buttons.
+// ZR aims a gun and L switches guns.
+const gamepadButtonMapping = {
+    a: 1,          // A
+    b: 0,          // B
+    start: 9,      // +
+    z: 6,          // ZL
     stickX: 0,
     stickY: 1,
     cStickX: 2,
     cStickY: 3,
-    rt: 12,
+    rt: 5,         // R
+    aim: 7,        // ZR
+    nextWeapon: 4, // L
 }
 
 const defaultGamepadButtonMapping = { ...gamepadButtonMapping }
@@ -273,6 +280,11 @@ export const playerInputUpdate = () => {
     if (navigator.getGamepads) {
         gamepad = navigator.getGamepads()[gamepadIndex]
     }
+    // Missing buttons (smaller pads) read as released rather than throwing.
+    const padButton = name => {
+        const button = gamepad && gamepad.buttons[gamepadButtonMapping[name]]
+        return Boolean(button && (button.pressed || button.touched))
+    }
     if (gamepad) {
         stickX = gamepad.axes[gamepadButtonMapping['stickX']]
         stickY = gamepad.axes[gamepadButtonMapping['stickY']] * -1
@@ -291,16 +303,20 @@ export const playerInputUpdate = () => {
         } else if (stickY > 1.0) {
             stickY = 1.0
         }
+        const cStickX = gamepad.axes[gamepadButtonMapping['cStickX']]
+        const cStickY = gamepad.axes[gamepadButtonMapping['cStickY']]
         Object.assign(gamepadFinal, {
-            a: gamepad.buttons[gamepadButtonMapping['a']].touched,
-            b: gamepad.buttons[gamepadButtonMapping['b']].touched,
-            start: gamepad.buttons[gamepadButtonMapping['start']].touched,
-            z: gamepad.buttons[gamepadButtonMapping['z']].touched,
-            cr: gamepad.axes[2] && gamepad.axes[2] > 0.5,
-            cl: gamepad.axes[2] && gamepad.axes[2] < -0.5,
-            cu: gamepad.axes[3] && gamepad.axes[3] < -0.5,
-            cd: gamepad.axes[3] && gamepad.axes[3] > 0.5,
-            rt: gamepad.buttons[gamepadButtonMapping['rt']].touched,
+            a: padButton('a'),
+            b: padButton('b'),
+            start: padButton('start'),
+            z: padButton('z'),
+            cr: cStickX > 0.5,
+            cl: cStickX < -0.5,
+            cu: cStickY < -0.5,
+            cd: cStickY > 0.5,
+            rt: padButton('rt'),
+            aim: padButton('aim'),
+            nextWeapon: padButton('nextWeapon'),
         })
     }
 
@@ -330,10 +346,10 @@ export const playerInputUpdate = () => {
     let buttonDownCd = gamepadFinal.cd || keyboardFinal.cd
     let buttonDownRt = gamepadFinal.rt || keyboardFinal.rt
 
-    // Weapons use fixed bindings like the car key: Q / left bumper aims and
-    // R / right bumper switches to the next gun.
-    const buttonDownAim = Boolean(keyboardButtons.q) || Boolean(gamepad && gamepad.buttons[4] && gamepad.buttons[4].pressed)
-    const buttonDownNextWeapon = Boolean(keyboardButtons.r) || Boolean(gamepad && gamepad.buttons[5] && gamepad.buttons[5].pressed)
+    // On the keyboard, weapons use fixed keys like the car: Q aims and R
+    // switches guns. Gamepad buttons come from the mapping above.
+    const buttonDownAim = Boolean(keyboardButtons.q) || Boolean(gamepadFinal.aim)
+    const buttonDownNextWeapon = Boolean(keyboardButtons.r) || Boolean(gamepadFinal.nextWeapon)
 
     window.playerInput = {
         buttonDownAim,
