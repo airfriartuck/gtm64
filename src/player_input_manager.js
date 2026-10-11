@@ -330,11 +330,15 @@ export const playerInputUpdate = () => {
     let buttonDownCd = gamepadFinal.cd || keyboardFinal.cd
     let buttonDownRt = gamepadFinal.rt || keyboardFinal.rt
 
-    // Aim is a fixed binding like the car key: Q, or the gamepad's left bumper.
+    // Weapons use fixed bindings like the car key: Q / left bumper aims and
+    // R / right bumper switches to the next gun.
     const buttonDownAim = Boolean(keyboardButtons.q) || Boolean(gamepad && gamepad.buttons[4] && gamepad.buttons[4].pressed)
+    const buttonDownNextWeapon = Boolean(keyboardButtons.r) || Boolean(gamepad && gamepad.buttons[5] && gamepad.buttons[5].pressed)
 
     window.playerInput = {
         buttonDownAim,
+        buttonDownNextWeapon,
+        buttonPressedNextWeapon: buttonDownNextWeapon && !window.playerInput.buttonDownNextWeapon,
         buttonPressedVehicle: Boolean(keyboardButtons.e) && !window.playerInput.buttonDownVehicle,
         buttonDownVehicle: Boolean(keyboardButtons.e),
         stickX, stickY,

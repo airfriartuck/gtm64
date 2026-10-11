@@ -119,11 +119,15 @@ function weaponRuntime() {
             ACT_FLAG_RIDING_SHELL: 1 << 16, ACT_FLAG_DIVING: 1 << 19, ACT_FLAG_BUTT_OR_STOMACH_SLIDE: 1 << 18,
             INPUT_OFF_FLOOR: 4 },
         'game/Interaction.js': { INTERACT_BOUNCE_TOP: 1 << 15, INTERACT_BOUNCE_TOP2: 1 << 20,
-            INTERACT_HIT_FROM_BELOW: 1 << 22, INTERACT_KOOPA: 1 << 7, INTERACT_BULLY: 1 << 17, INTERACT_MR_BLIZZARD: 1 << 21 },
+            INTERACT_HIT_FROM_BELOW: 1 << 22, INTERACT_KOOPA: 1 << 7, INTERACT_BULLY: 1 << 17, INTERACT_MR_BLIZZARD: 1 << 21,
+            ATTACK_KICK_OR_TRIP: 2, INT_STATUS_INTERACTED: 1 << 15, INT_STATUS_WAS_ATTACKED: 1 << 14 },
         'engine/graph_node.js': { GRAPH_RENDER_ACTIVE: 1, GRAPH_RENDER_INVISIBLE: 16 },
         'engine/GeoLayout.js': { LAYER_OPAQUE: 1 },
-        'actors/mario_gun/model.inc.js': { mario_pistol_dl: ['pistol'] },
+        'actors/mario_gun/model.inc.js': { mario_gun_dls: new Proxy({}, { get: (t, id) => ({ dl: [id], flashDl: [id, 'flash'] }) }) },
+        'audio/external.js': { play_sound: (sound) => sounds.push(sound) },
+        'include/sounds.js': { SOUND_OBJ_SNUFIT_SHOOT: 'shot' },
     })
+    const sounds = []
     const lists = Array.from({ length: 13 }, () => { const head = {}; head.next = head; return head })
     const add = (index, object) => {
         object.next = lists[index].next
@@ -133,10 +137,10 @@ function weaponRuntime() {
     const object = (x, z, type, extra = {}) => {
         const rawData = []
         rawData[0x06] = x; rawData[0x07] = 0; rawData[0x08] = z
-        rawData[0x2A] = type; rawData[0x3F] = extra.health || 0
+        rawData[0x2A] = type
         return { rawData, activeFlags: 1, gfx: { flags: 1 }, hitboxHeight: 100, hitboxDownOffset: 0, ...extra }
     }
-    const mario = { pos: [0, 0, 0], action: ACT_IDLE, input: 0 }
+    const mario = { pos: [0, 0, 0], action: ACT_IDLE, input: 0, faceAngle: [0, 0, 0], marioObj: { gfx: {} } }
     Object.assign(r.linker, {
         ObjectListProcessor: { gObjectLists: lists },
         LevelUpdate: { gMarioState: mario },
@@ -144,7 +148,7 @@ function weaponRuntime() {
         SurfaceCollision: flat,
         behaviors: { bhvBobomb: ['bobomb'] },
     })
-    return { weapon: r.load('game/MarioWeapon.js'), lists, add, object, mario, r }
+    return { weapon: r.load('game/MarioWeapon.js'), lists, add, object, mario, r, sounds }
 }
 
 test('only active, attackable enemies are collected as targets', () => {
@@ -180,7 +184,7 @@ test('aiming starts from standing or walking only, with the aim button held', ()
 
 test('the lock holds, switches with C-left / C-right, and the gun only shows while aiming', () => {
     const { weapon, add, object, mario } = weaponRuntime()
-    const centre = add(5, object(0, 1000, 1 << 15, { health: 4 }))
+    const centre = add(5, object(0, 1000, 1 << 15))
     const left = add(5, object(400, 1000, 1 << 15))
     mario.action = ACT_GUN_AIM
     const node = { flags: 0 }
@@ -191,10 +195,9 @@ test('the lock holds, switches with C-left / C-right, and the gun only shows whi
     const yaw = weapon.updateWeaponAim(mario, input)
     assert.equal(weapon.weaponState.target.object, centre)
     assert.ok(Math.abs(yaw) < 1)
-    centre.rawData[0x3F] = 1
     weapon.updateWeaponAim(mario, input)
     assert.equal(weapon.weaponState.target.object, centre, 'the lock is kept while valid')
-    assert.equal(weapon.weaponState.target.health, 0.25)
+    assert.equal(weapon.weaponState.target.health, 1)
 
     const press = { buttonPressedCl: true }
     const leftYaw = weapon.updateWeaponAim(mario, press)
@@ -211,4 +214,141 @@ test('the lock holds, switches with C-left / C-right, and the gun only shows whi
 
     mario.action = ACT_IDLE
     assert.equal(weapon.geo_mario_gun(1, node), null)
+})
+
+const weapons = () => runtime().load('game/Weapons.js')
+
+test('six distinct GTA weapon types, each with a gun model and muzzle flash', () => {
+    const { WEAPONS, nextWeapon } = weapons()
+    assert.deepEqual([...WEAPONS.map(w => w.type)], ['WEAPON_PISTOL', 'WEAPON_DESERT_EAGLE', 'WEAPON_SHOTGUN',
+        'WEAPON_MICRO_UZI', 'WEAPON_M4', 'WEAPON_SNIPERRIFLE'])
+    // Every enum name really exists in gta-reversed's eWeaponType, when it's checked out next door.
+    const enumFile = path.resolve(__dirname, '../../gta-reversed/source/game_sa/Enums/eWeaponType.h')
+    if (fs.existsSync(enumFile)) {
+        const source = fs.readFileSync(enumFile, 'utf8')
+        for (const weapon of WEAPONS) assert.match(source, new RegExp(`\\b${weapon.type}\\b`))
+    }
+    const r = runtime()
+    const { mario_gun_dls } = r.load('actors/mario_gun/model.inc.js')
+    for (const weapon of WEAPONS) {
+        const model = mario_gun_dls[weapon.id]
+        assert.ok(model && model.dl.length > 10, `${weapon.id} has a model`)
+        assert.ok(model.flashDl.length > model.dl.length, `${weapon.id} has a muzzle flash`)
+    }
+    assert.equal(new Set(WEAPONS.map(w => JSON.stringify(mario_gun_dls[w.id].dl))).size, WEAPONS.length, 'models differ')
+    assert.equal(nextWeapon(0), 1)
+    assert.equal(nextWeapon(WEAPONS.length - 1), 0)
+    // Sniper outranges everything; the shotgun is short-range and multi-pellet.
+    const byId = Object.fromEntries(WEAPONS.map(w => [w.id, w]))
+    assert.ok(WEAPONS.every(w => w === byId.sniper || w.range < byId.sniper.range))
+    assert.ok(byId.shotgun.range < byId.pistol.range && byId.shotgun.pellets > 1)
+})
+
+test('the trigger respects semi-auto presses, fire rate, clip size and reload', () => {
+    const { WEAPONS, newAmmo, pullTrigger } = weapons()
+    const pistol = WEAPONS[0], smg = WEAPONS.find(w => w.id === 'smg')
+    const ammo = newAmmo()
+    assert.equal(pullTrigger(ammo[0], pistol, true, true), true)
+    // Holding the trigger doesn't refire a semi-automatic, even after the cooldown.
+    for (let i = 0; i < 30; i++) assert.equal(pullTrigger(ammo[0], pistol, false, true), false)
+    assert.equal(pullTrigger(ammo[0], pistol, true, true), true)
+    assert.equal(ammo[0].clip, pistol.clip - 2)
+
+    // An automatic fires every `interval` frames while held, until the clip runs dry.
+    const smgAmmo = ammo[WEAPONS.indexOf(smg)]
+    let shots = 0, frames = 0
+    while (smgAmmo.reload === 0) { frames++; if (pullTrigger(smgAmmo, smg, false, true)) shots++ }
+    assert.equal(shots, smg.clip)
+    assert.equal(frames, (smg.clip - 1) * smg.interval + 1)
+    // Reloading blocks the trigger, then refills the clip.
+    for (let i = 0; i < smg.reload - 1; i++) assert.equal(pullTrigger(smgAmmo, smg, true, true), false)
+    assert.equal(pullTrigger(smgAmmo, smg, true, true), true)
+    assert.equal(smgAmmo.clip, smg.clip - 1)
+})
+
+test('shots hit the lock, else the nearest enemy in the spread; shotgun pellets hit a crowd', () => {
+    const { WEAPONS, shotHits } = weapons()
+    const [pistol] = WEAPONS, shotgun = WEAPONS.find(w => w.id === 'shotgun')
+    const nearAhead = enemy(20, 600), farAhead = enemy(0, 1500), aside = enemy(800, 600)
+    const all = [farAhead, aside, nearAhead]
+    assert.deepEqual([...shotHits(shooter, 0, aside, all, pistol, clear).map(h => h.target)], [aside])
+    const free = shotHits(shooter, 0, null, all, pistol, clear)
+    assert.equal(free.length, 1)
+    assert.equal(free[0].target, nearAhead)
+    assert.equal(free[0].damage, pistol.damage)
+    assert.equal(shotHits(shooter, 0x8000, null, all, pistol, clear).length, 0, 'nothing behind Mario is hit')
+    assert.equal(shotHits(shooter, 0, null, [nearAhead], pistol, () => true).length, 0, 'walls stop bullets')
+
+    const close = enemy(-60, 300), mid = enemy(60, 1200), out = enemy(0, 2500)
+    const blast = shotHits(shooter, 0, null, [close, mid, out, aside], shotgun, clear)
+    assert.deepEqual([...blast.map(h => h.target)], [close, mid])
+    assert.ok(blast[0].damage > blast[1].damage, 'pellets spread out with distance')
+    assert.ok(blast[0].damage >= 75)
+})
+
+test('enemies take GTA damage until defeated; Bob-ombs explode and heavies last longer', () => {
+    const { weapon, lists, add, object, r } = weaponRuntime()
+    const goomba = add(5, object(0, 500, 1 << 15))
+    const bobomb = add(2, object(100, 500, 1 << 1, { behavior: r.linker.behaviors.bhvBobomb }))
+    const bully = add(4, object(-100, 500, 1 << 17))
+    for (let i = 0; i < 3; i++) assert.equal(weapon.damageEnemy(goomba, 25), false)
+    assert.equal(goomba.rawData[0x2B], undefined, 'no SM64 attack until health runs out')
+    assert.equal(weapon.damageEnemy(goomba, 25), true)
+    assert.equal(goomba.rawData[0x2B], 2 | (1 << 15) | (1 << 14), 'defeated by a kick-style attack')
+    assert.equal(weapon.damageEnemy(goomba, 25), false, 'only defeated once')
+    weapon.damageEnemy(bobomb, 100)
+    assert.equal(bobomb.rawData[0x31], 3, 'BOBOMB_ACT_EXPLODE')
+    assert.equal(weapon.damageEnemy(bully, 125), false)
+    assert.equal(weapon.damageEnemy(bully, 125), true)
+    assert.equal(weapon.collectEnemies(lists).length, 0, 'defeated enemies are no longer targets')
+    // The Goomba and Bob-omb despawn; the Bully survives its knockback and returns.
+    goomba.activeFlags = bobomb.activeFlags = 0
+    for (let i = 0; i < 88; i++) assert.equal(weapon.collectEnemies(lists).length, 0)
+    const back = weapon.collectEnemies(lists)
+    assert.equal(back.length, 1)
+    assert.equal(back[0].object, bully)
+    assert.equal(back[0].health, 1)
+})
+
+test('B fires at the lock, tints the marker, and the lock moves on after a kill', () => {
+    const { weapon, add, object, mario, sounds } = weaponRuntime()
+    const first = add(5, object(0, 1000, 1 << 15))
+    const second = add(5, object(300, 1000, 1 << 15))
+    mario.action = ACT_GUN_AIM
+    weapon.updateWeaponAim(mario, {})
+    assert.equal(weapon.weaponState.target.object, first)
+    weapon.updateWeaponAim(mario, { buttonPressedB: true, buttonDownB: true })
+    assert.equal(sounds.length, 1)
+    assert.equal(first.weaponHealth, 75)
+    assert.equal(weapon.weaponState.target.health, 0.75)
+    assert.equal(weapon.geo_mario_gun(1, { flags: 0 })[1], 'flash', 'muzzle flash on the shot')
+    weapon.updateWeaponAim(mario, {})
+    weapon.updateWeaponAim(mario, {})
+    assert.equal(weapon.geo_mario_gun(1, { flags: 0 }).length, 1, 'flash fades')
+    for (let i = 0; i < 3; i++) {
+        for (let wait = 0; wait < 8; wait++) weapon.updateWeaponAim(mario, {})
+        weapon.updateWeaponAim(mario, { buttonPressedB: true, buttonDownB: true })
+    }
+    assert.equal(first.weaponDefeated, true)
+    assert.equal(weapon.weaponState.target, null)
+    weapon.updateWeaponAim(mario, {})
+    assert.equal(weapon.weaponState.target.object, second)
+    assert.equal(weapon.weaponState.ammo[0].clip, 13)
+})
+
+test('R cycles weapons, each with its own clip, and the hand shows the selected gun', () => {
+    const { weapon, mario } = weaponRuntime()
+    mario.action = ACT_GUN_AIM
+    const seen = []
+    for (let i = 0; i < 6; i++) {
+        seen.push(weapon.geo_mario_gun(1, { flags: 0 })[0])
+        weapon.updateWeaponHud({ buttonPressedNextWeapon: true })
+    }
+    assert.deepEqual(seen, ['pistol', 'deagle', 'shotgun', 'smg', 'm4', 'sniper'])
+    assert.equal(weapon.currentWeapon().id, 'pistol', 'wraps around')
+    assert.ok(weapon.weaponState.hudFrames > 0, 'the panel shows the new gun')
+    weapon.weaponState.index = 3
+    weapon.updateWeaponAim(mario, { buttonPressedB: true, buttonDownB: true })
+    assert.equal(weapon.weaponState.ammo[3].clip, 49)
+    assert.equal(weapon.weaponState.ammo[0].clip, 17)
 })

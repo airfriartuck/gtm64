@@ -138,3 +138,23 @@ stick strafes, **C-left / C-right** (**J / L**) switch to the next enemy on
 that side, and jump cancels the aim. The targeting is ported from
 [gta-reversed](https://github.com/gta-reversed/gta-reversed)
 (`CPlayerPed::EvaluateTarget` and related functions).
+
+Press **B** while aiming to fire (hold it for automatic weapons) and **R** (or
+the right bumper) to switch guns. Enemies have GTA-style health (100, or 250
+for Bullies and Chuckyas). When it runs out, Bob-ombs explode and other
+enemies take a kick, so each reacts as it does in SM64: Goombas are defeated,
+Bullies are knocked back and can be shot again. Without a lock, shots go straight ahead and hit the nearest enemy in
+the gun's spread.
+
+| Gun | Damage | Range | Clip | Fire |
+| --- | --- | --- | --- | --- |
+| Pistol | 25 | 35 m | 17 | semi-auto |
+| Desert Eagle | 70 | 35 m | 7 | semi-auto |
+| Shotgun | 6 × 15, less with distance | 20 m | 1 | hits every enemy in its cone |
+| Micro SMG | 20 | 30 m | 50 | automatic |
+| M4 | 30 | 45 m | 50 | automatic |
+| Sniper Rifle | 125 | 100 m | 1 | semi-auto |
+
+The guns are GTA SA weapon types from gta-reversed's `eWeaponType`. Their
+stats come from SA's `weapon.dat`, which isn't in gta-reversed, so the
+values above are approximations tuned for this game (100 units ≈ 1 m).

@@ -2141,7 +2141,9 @@ const mario_update_hitbox_and_cap_model = (m) => {
 export const execute_mario_action = () => {
     const m = LevelUpdate.gMarioState
     const group = m.action & ACT_GROUP_MASK
-    if (updateGardenCar(m, ACT_IDLE, group === ACT_GROUP_STATIONARY || group === ACT_GROUP_MOVING)) {
+    // B fires while aiming, so it mustn't also climb into the car.
+    const canEnterCar = (group === ACT_GROUP_STATIONARY || group === ACT_GROUP_MOVING) && m.action !== ACT_GUN_AIM
+    if (updateGardenCar(m, ACT_IDLE, canEnterCar)) {
         update_mario_info_for_cam(m)
         return 0
     }
