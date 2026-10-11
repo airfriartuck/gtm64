@@ -30,6 +30,7 @@ import { int16, sins, coss } from "../utils"
 import * as MarioConstants from "../include/mario_constants"
 import { gAudioRandom } from "../audio/data"
 import { updateGardenCar } from "./GardenCar"
+import { canStartAiming } from "./MarioWeapon"
 
 import {
    SOUND_BANK_MOVING, SOUND_TERRAIN_WATER, SOUND_TERRAIN_SAND, SOUND_TERRAIN_SNOW,
@@ -371,6 +372,7 @@ export const ACT_LONG_JUMP_LAND_STOP             = 0x0800023B
 export const ACT_GROUND_POUND_LAND               = 0x0080023C
 export const ACT_BRAKING_STOP                    = 0x0C00023D
 export const ACT_BUTT_SLIDE_STOP                 = 0x0C00023E
+export const ACT_GUN_AIM                         = 0x0000023F
 export const ACT_HOLD_BUTT_SLIDE_STOP            = 0x0800043F
 
 // group 0x040: moving (ground) actions
@@ -2149,6 +2151,8 @@ export const execute_mario_action = () => {
         update_mario_inputs(LevelUpdate.gMarioState)
         Interact.mario_handle_special_floors(LevelUpdate.gMarioState)
         Interact.mario_process_interactions(LevelUpdate.gMarioState)
+
+        if (canStartAiming(m)) set_mario_action(m, ACT_GUN_AIM, 0)
 
         let inLoop = 1
 

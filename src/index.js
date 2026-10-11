@@ -7,6 +7,7 @@ import { originalAudio } from "./audio/OriginalAudio"
 import { SEQ_MENU_TITLE_SCREEN } from "./include/seq_ids"
 import { getGardenCar } from './game/GardenCar'
 import { luigiCarDialogue } from './game/LuigiCarDialogue'
+import { updateTargetMarker } from './game/MarioWeapon'
 
 const send_display_list = (gfx_list) => { GFX.run(gfx_list) }
 
@@ -21,6 +22,7 @@ const produce_one_frame = () => {
     playerInputUpdate() /// Keyboard buttons / joystick process to game input commands
     GFX.start_frame()
     Game.main_loop_one_iteration()
+    updateTargetMarker()
     try {
         originalAudio.update(gLinker.Area.gCurrentArea)
         luigiCarDialogue.update(getGardenCar(), performance.now() / 1000, window.playerInput)

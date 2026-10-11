@@ -7,8 +7,12 @@ import {
 } from "./Mario"
 
 import {
-    stationary_ground_step
+    stationary_ground_step, perform_ground_step
 } from "./MarioStep"
+
+import { ACT_GUN_AIM, GROUND_STEP_LEFT_GROUND, MARIO_ANIM_FIRST_PUNCH, set_anim_to_frame } from "./Mario"
+import { updateWeaponAim, stopWeaponAim } from "./MarioWeapon"
+import { sins, coss, int16 } from "../utils"
 
 import {
     mario_throw_held_object
@@ -944,6 +948,45 @@ const check_common_stationary_cancels = (m) => {
     return false
 }
 
+// Hold the aim button to draw the gun. Mario turns to the locked target (or
+// the camera's direction) and can strafe slowly without turning away.
+const AIM_FRAME = 10 // arm fully extended in the first punch
+const act_gun_aim = (m) => {
+    if (!window.playerInput.buttonDownAim) {
+        stopWeaponAim()
+        return set_mario_action(m, ACT_IDLE, 0)
+    }
+    if (m.input & INPUT_A_PRESSED) {
+        stopWeaponAim()
+        return set_jumping_action(m, ACT_JUMP, 0)
+    }
+    if (m.input & (INPUT_OFF_FLOOR | INPUT_ABOVE_SLIDE)) {
+        stopWeaponAim()
+        return set_mario_action(m, m.input & INPUT_OFF_FLOOR ? ACT_FREEFALL : ACT_BEGIN_SLIDING, 0)
+    }
+
+    const aimYaw = updateWeaponAim(m)
+    const turn = int16(Math.round(aimYaw) - m.faceAngle[1])
+    m.faceAngle[1] = int16(m.faceAngle[1] + Math.max(-0x1800, Math.min(0x1800, turn)))
+
+    if (m.input & INPUT_NONZERO_ANALOG) {
+        const speed = Math.min(m.intendedMag, 32) / 32 * 8
+        m.vel[0] = sins(m.intendedYaw) * speed
+        m.vel[2] = coss(m.intendedYaw) * speed
+        m.forwardVel = 0
+        if (perform_ground_step(m) == GROUND_STEP_LEFT_GROUND) {
+            stopWeaponAim()
+            return set_mario_action(m, ACT_FREEFALL, 0)
+        }
+    } else {
+        stationary_ground_step(m)
+    }
+
+    set_mario_animation(m, MARIO_ANIM_FIRST_PUNCH)
+    set_anim_to_frame(m, AIM_FRAME)
+    return false
+}
+
 export const mario_execute_stationary_action = (m) => {
     let cancel
 
@@ -976,6 +1019,7 @@ export const mario_execute_stationary_action = (m) => {
         case ACT_SLIDE_KICK_SLIDE_STOP:   cancel = act_slide_kick_slide_stop(m);      break
         case ACT_SHOCKWAVE_BOUNCE:        cancel = act_shockwave_bounce(m);           break
         case ACT_FIRST_PERSON:            cancel = act_first_person(m);               break
+        case ACT_GUN_AIM:                 cancel = act_gun_aim(m);                    break
         case ACT_JUMP_LAND_STOP:          cancel = act_jump_land_stop(m);             break
         case ACT_DOUBLE_JUMP_LAND_STOP:   cancel = act_double_jump_land_stop(m);      break
         case ACT_FREEFALL_LAND_STOP:      cancel = act_freefall_land_stop(m);         break

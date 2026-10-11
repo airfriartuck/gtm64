@@ -127,3 +127,14 @@ With this, you can make Mario fly, go fast, and a lot of other things.
 (For this project, it was re-implemented in Javascript and WebGL)
 
 
+
+## Aiming
+
+Hold **Q** (or the gamepad's left bumper) to draw Mario's pistol. Like GTA San
+Andreas, he locks on to the enemy that is closest to where the camera is
+looking, weighing distance and angle, and skips enemies behind walls or hills.
+A marker above the target shows its health from green to red. While aiming, the
+stick strafes, **C-left / C-right** (**J / L**) switch to the next enemy on
+that side, and jump cancels the aim. The targeting is ported from
+[gta-reversed](https://github.com/gta-reversed/gta-reversed)
+(`CPlayerPed::EvaluateTarget` and related functions).
