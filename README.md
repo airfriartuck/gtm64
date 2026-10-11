@@ -182,6 +182,12 @@ the gun's spread.
 | M4 | 30 | 45 m | 50 | automatic |
 | Sniper Rifle | 125 | 100 m | 1 | semi-auto |
 
+Each gun has its own sound: the ROM has no gunfire, so shots are synthesized
+from a filtered noise crack, a low thump and, for heavy guns, an echo. The
+shotgun pumps and the sniper rifle works its bolt after firing, and there are
+sounds for reloading, an empty trigger and switching guns. They follow the
+game's mute button and pause with the rest of the audio.
+
 The guns are GTA SA weapon types from gta-reversed's `eWeaponType`. Their
 stats come from SA's `weapon.dat`, which isn't in gta-reversed, so the
 values above are approximations tuned for this game (100 units ≈ 1 m).

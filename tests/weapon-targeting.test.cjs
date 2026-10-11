@@ -124,8 +124,7 @@ function weaponRuntime() {
         'engine/graph_node.js': { GRAPH_RENDER_ACTIVE: 1, GRAPH_RENDER_INVISIBLE: 16 },
         'engine/GeoLayout.js': { LAYER_OPAQUE: 1 },
         'actors/mario_gun/model.inc.js': { mario_gun_dls: new Proxy({}, { get: (t, id) => ({ dl: [id], flashDl: [id, 'flash'] }) }) },
-        'audio/external.js': { play_sound: (sound) => sounds.push(sound) },
-        'include/sounds.js': { SOUND_OBJ_SNUFIT_SHOOT: 'shot' },
+        'audio/external.js': { play_gun_sound: (sound) => sounds.push(sound) },
     })
     const sounds = []
     const lists = Array.from({ length: 13 }, () => { const head = {}; head.next = head; return head })
@@ -389,4 +388,33 @@ test('strafing animations walk the legs while the upper body holds the aiming po
     assert.equal(strafeDirection(0x4000, 0), 'left')
     assert.equal(strafeDirection(-0x4000, 0), 'right')
     assert.equal(strafeDirection(0x4000 - 100, -0x8000 + 0x4000), 'backward', 'wraps around ±180°')
+})
+
+test('shots, reloads, dry fire and switching each make their sound', () => {
+    const { weapon, add, object, mario, sounds } = weaponRuntime()
+    add(5, object(0, 1000, 1 << 15))
+    mario.action = ACT_GUN_AIM
+    const fire = { buttonPressedB: true, buttonDownB: true }
+    weapon.updateWeaponAim(mario, fire)
+    assert.deepEqual(sounds.splice(0), ['pistol'])
+    weapon.updateWeaponHud({ buttonPressedNextWeapon: true })
+    weapon.updateWeaponHud({ buttonPressedNextWeapon: true })
+    weapon.updateWeaponHud({ buttonPressedNextWeapon: true })
+    assert.deepEqual(sounds.splice(0), ['switch', 'switch', 'switch'])
+    assert.equal(weapon.currentWeapon().id, 'smg')
+
+    // Empty the SMG: the last round starts a reload (magazine out).
+    weapon.weaponState.ammo[3].clip = 1
+    weapon.updateWeaponAim(mario, fire)
+    assert.deepEqual(sounds.splice(0), ['reload', 'smg'])
+    weapon.updateWeaponAim(mario, fire)
+    assert.deepEqual(sounds.splice(0), ['empty'], 'pulling the trigger mid-reload clicks')
+    while (weapon.weaponState.ammo[3].reload > 0) weapon.updateWeaponAim(mario, {})
+    assert.deepEqual(sounds.splice(0), ['ready'])
+
+    // Single-shot guns work the pump/bolt inside their own shot sound.
+    weapon.weaponState.index = 2
+    weapon.updateWeaponAim(mario, fire)
+    while (weapon.weaponState.ammo[2].reload > 0) weapon.updateWeaponAim(mario, {})
+    assert.deepEqual(sounds.splice(0), ['shotgun'])
 })

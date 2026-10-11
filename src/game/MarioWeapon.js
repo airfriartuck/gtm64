@@ -7,8 +7,7 @@ import { mario_gun_dls } from "../actors/mario_gun/model.inc"
 import { ACT_GUN_AIM, ACT_GROUP_MASK, ACT_GROUP_STATIONARY, ACT_GROUP_MOVING, ACT_FLAG_ALLOW_FIRST_PERSON,
     ACT_FLAG_INVULNERABLE, ACT_FLAG_SHORT_HITBOX, ACT_FLAG_RIDING_SHELL, ACT_FLAG_DIVING,
     ACT_FLAG_BUTT_OR_STOMACH_SLIDE, INPUT_OFF_FLOOR } from "./Mario"
-import { play_sound } from "../audio/external"
-import { SOUND_OBJ_SNUFIT_SHOOT } from "../include/sounds"
+import { play_gun_sound } from "../audio/external"
 import * as Targeting from "./WeaponTargeting"
 import { WEAPONS, ENEMY_HEALTH, HEAVY_ENEMY_HEALTH, newAmmo, nextWeapon, pullTrigger, shotHits } from "./Weapons"
 
@@ -124,9 +123,16 @@ export const updateWeaponAim = (m, input = window.playerInput) => {
     state.target = target
 
     if (state.flash > 0) state.flash--
-    if (pullTrigger(state.ammo[state.index], weapon, input.buttonPressedB, input.buttonDownB)) {
+    const ammo = state.ammo[state.index]
+    const wasReloading = ammo.reload > 0
+    const fired = pullTrigger(ammo, weapon, input.buttonPressedB, input.buttonDownB)
+    // Single-shot guns pump or work the bolt in their own shot sound.
+    if (weapon.clip > 1 && wasReloading && ammo.reload === 0) play_gun_sound('ready')
+    if (weapon.clip > 1 && !wasReloading && ammo.reload > 0) play_gun_sound('reload')
+    if (!fired && wasReloading && input.buttonPressedB) play_gun_sound('empty')
+    if (fired) {
         state.flash = 2
-        play_sound(SOUND_OBJ_SNUFIT_SHOOT, m.marioObj.gfx.cameraToObject)
+        play_gun_sound(weapon.id)
         for (const hit of shotHits(shooter, m.faceAngle[1], target, candidates, weapon, losBlocked)) {
             damageEnemy(hit.target.object, hit.damage)
             hit.target.health = hit.target.object.weaponHealth / maxHealth(hit.target.object)
@@ -210,6 +216,7 @@ export const updateWeaponHud = (input = window.playerInput) => {
         weaponState.index = nextWeapon(weaponState.index)
         weaponState.flash = 0
         weaponState.hudFrames = 90
+        play_gun_sound('switch')
     } else if (weaponState.hudFrames > 0) {
         weaponState.hudFrames--
     }
