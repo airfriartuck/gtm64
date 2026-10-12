@@ -10,11 +10,11 @@ import {
     stationary_ground_step, perform_ground_step
 } from "./MarioStep"
 
-import { ACT_GUN_AIM, GROUND_STEP_LEFT_GROUND, MARIO_ANIM_FIRST_PUNCH, MARIO_ANIM_FIRST_PERSON, MARIO_ANIM_WALKING, MARIO_ANIM_SIDESTEP_LEFT,
+import { ACT_GUN_AIM, ACT_SIDE_FLIP, ACT_LONG_JUMP, GROUND_STEP_LEFT_GROUND, MARIO_ANIM_FIRST_PUNCH, MARIO_ANIM_FIRST_PERSON, MARIO_ANIM_WALKING, MARIO_ANIM_SIDESTEP_LEFT,
     MARIO_ANIM_SIDESTEP_RIGHT, set_anim_to_frame } from "./Mario"
 import { pinParts, strafeDirection, AIM_FRAME } from "./MarioAimAnimation"
 import { rigArms } from "./MarioAimRig"
-import { updateWeaponAim, stopWeaponAim, currentWeapon } from "./MarioWeapon"
+import { updateWeaponAim, stopWeaponAim, currentWeapon, startJumpAim } from "./MarioWeapon"
 import { sins, coss, int16 } from "../utils"
 
 import {
@@ -987,6 +987,28 @@ const set_aim_animation = (m, name, accel) => {
     }
     info.animAccel = accel
 }
+// Every jump works from the aim stance, the SM64 way: Z + A backflips, or
+// long jumps on the move; A against the facing side flips; A jumps toward the
+// stick. Double and triple jumps chain from the landings as usual.
+const gun_aim_jump = (m) => {
+    startJumpAim(m)
+    const moving = m.input & INPUT_NONZERO_ANALOG
+    const speed = Math.min(m.intendedMag, 32)
+    if (m.input & INPUT_Z_DOWN) {
+        if (!moving) return set_jumping_action(m, ACT_BACKFLIP, 0)
+        m.faceAngle[1] = m.intendedYaw
+        m.forwardVel = speed
+        return set_jumping_action(m, ACT_LONG_JUMP, 0)
+    }
+    if (moving && strafeDirection(m.intendedYaw, m.faceAngle[1]) === 'backward') {
+        return set_jumping_action(m, ACT_SIDE_FLIP, 0)
+    }
+    if (moving) {
+        m.faceAngle[1] = m.intendedYaw
+        m.forwardVel = speed / 2
+    }
+    return set_jumping_action(m, ACT_JUMP, 0)
+}
 const act_gun_aim = (m) => {
     if (!window.playerInput.buttonDownAim) {
         stopWeaponAim()
@@ -994,7 +1016,7 @@ const act_gun_aim = (m) => {
     }
     // Jumping keeps the gun out and the lock: Mario aims in the air.
     if (m.input & INPUT_A_PRESSED) {
-        return set_jumping_action(m, ACT_JUMP, 0)
+        return gun_aim_jump(m)
     }
     if (m.input & (INPUT_OFF_FLOOR | INPUT_ABOVE_SLIDE)) {
         stopWeaponAim()

@@ -6,9 +6,12 @@ import { INTERACT_BOUNCE_TOP, INTERACT_BOUNCE_TOP2, INTERACT_HIT_FROM_BELOW, INT
 import { mario_gun_dls } from "../actors/mario_gun/model.inc"
 import { ACT_GUN_AIM, ACT_GROUP_MASK, ACT_GROUP_STATIONARY, ACT_GROUP_MOVING, ACT_FLAG_ALLOW_FIRST_PERSON,
     ACT_FLAG_INVULNERABLE, ACT_FLAG_SHORT_HITBOX, ACT_FLAG_RIDING_SHELL, ACT_FLAG_DIVING,
-    ACT_FLAG_BUTT_OR_STOMACH_SLIDE, INPUT_OFF_FLOOR, INPUT_B_PRESSED, ACT_JUMP, ACT_DOUBLE_JUMP, ACT_FREEFALL,
-    ACT_LONG_JUMP, ACT_WALL_KICK_AIR } from "./Mario"
-import { rigArms, rigForValues, writeRotation, writeAnimated, solveGunArm, solveTwoHanded, LEFT_ARM, RIGHT_ARM } from "./MarioAimRig"
+    ACT_FLAG_BUTT_OR_STOMACH_SLIDE, INPUT_OFF_FLOOR, INPUT_B_PRESSED, ACT_JUMP, ACT_DOUBLE_JUMP, ACT_TRIPLE_JUMP,
+    ACT_SPECIAL_TRIPLE_JUMP, ACT_BACKFLIP, ACT_SIDE_FLIP, ACT_LONG_JUMP, ACT_WALL_KICK_AIR, ACT_FREEFALL,
+    ACT_TOP_OF_POLE_JUMP, ACT_STEEP_JUMP, ACT_JUMP_LAND, ACT_FREEFALL_LAND, ACT_DOUBLE_JUMP_LAND, ACT_SIDE_FLIP_LAND,
+    ACT_TRIPLE_JUMP_LAND, ACT_BACKFLIP_LAND, ACT_LONG_JUMP_LAND } from "./Mario"
+import { rigArms, rigForValues, writeRotation, writeAnimated, solveGunArm, solveTwoHanded, torsoInWorld, canPointAt,
+    LEFT_ARM, RIGHT_ARM } from "./MarioAimRig"
 import { int16 } from "../utils"
 import { play_gun_sound } from "../audio/external"
 import * as Targeting from "./WeaponTargeting"
@@ -23,20 +26,24 @@ const ENEMY_BEHAVIORS = ['bhvBobomb', 'bhvChuckya']
 const ENEMY_LISTS = [2, 4, 5] // OBJ_LIST_DESTRUCTIVE, OBJ_LIST_GENACTOR, OBJ_LIST_PUSHABLE
 
 export const weaponState = { index: 0, ammo: newAmmo(), target: null, flash: 0, hudFrames: 0, airAim: false, airYaw: 0,
-    aimPoint: null, aimDir: [0, 0, 1] }
+    airAimYaw: 0, airGfx: null, aimPoint: null, aimDir: [0, 0, 1] }
 export const currentWeapon = () => WEAPONS[weaponState.index]
 
-// Ordinary jumps and falls keep their SM64 physics while Mario aims. Flips
-// and the triple jump spin him too much to hold a gun steady. Read on use:
+// Every jump keeps its SM64 physics while Mario aims, and so do the landings
+// between them, so double and triple jumps still chain. Read on use:
 // Mario.js isn't initialised when this module loads.
-const airAimActions = () => [ACT_JUMP, ACT_DOUBLE_JUMP, ACT_FREEFALL, ACT_LONG_JUMP, ACT_WALL_KICK_AIR]
+const airAimActions = () => [ACT_JUMP, ACT_DOUBLE_JUMP, ACT_TRIPLE_JUMP, ACT_SPECIAL_TRIPLE_JUMP, ACT_BACKFLIP,
+    ACT_SIDE_FLIP, ACT_LONG_JUMP, ACT_WALL_KICK_AIR, ACT_FREEFALL, ACT_TOP_OF_POLE_JUMP, ACT_STEEP_JUMP]
+const landingActions = () => [ACT_JUMP_LAND, ACT_FREEFALL_LAND, ACT_DOUBLE_JUMP_LAND, ACT_SIDE_FLIP_LAND,
+    ACT_TRIPLE_JUMP_LAND, ACT_BACKFLIP_LAND, ACT_LONG_JUMP_LAND]
+const isJumpAction = m => airAimActions().includes(m.action) || (weaponState.airAim && landingActions().includes(m.action))
 export const canAimInAir = (m, input = window.playerInput) =>
-    Boolean(input.buttonDownAim) && !m.heldObj && airAimActions().includes(m.action)
+    Boolean(input.buttonDownAim) && !m.heldObj && isJumpAction(m)
 
 // Derived from Mario's action so knockbacks and warps put the gun away too.
 export const isAiming = () => {
     const m = gLinker.LevelUpdate && gLinker.LevelUpdate.gMarioState
-    return Boolean(m && (m.action === ACT_GUN_AIM || (weaponState.airAim && airAimActions().includes(m.action))))
+    return Boolean(m && (m.action === ACT_GUN_AIM || (weaponState.airAim && isJumpAction(m))))
 }
 
 const hasBehavior = (object, name) => Boolean(object.behavior) && object.behavior === gLinker.behaviors[name]
@@ -52,6 +59,8 @@ const maxHealth = object => (object.rawData[oInteractType] & INTERACT_BULLY) || 
 // `landed` ignores the off-floor input left over from the frame Mario touched down.
 export const canStartAiming = (m, input = window.playerInput, landed = false) => {
     if (!input.buttonDownAim || m.action === ACT_GUN_AIM || m.heldObj || (!landed && (m.input & INPUT_OFF_FLOOR))) return false
+    // Landing from an aimed jump stays a landing, so the next jump can chain.
+    if (!landed && weaponState.airAim && landingActions().includes(m.action)) return false
     const group = m.action & ACT_GROUP_MASK
     if (group === ACT_GROUP_STATIONARY) return Boolean(m.action & ACT_FLAG_ALLOW_FIRST_PERSON)
     return group === ACT_GROUP_MOVING && !(m.action & (ACT_FLAG_INVULNERABLE | ACT_FLAG_SHORT_HITBOX
@@ -114,10 +123,14 @@ const cameraYaw = camera => Targeting.yawTo(camera.pos, camera.focus)
 const losBlocked = (shooter, target) => Targeting.lineOfSightBlocked(gLinker.SurfaceCollision,
     [shooter.pos[0], shooter.pos[1] + 20, shooter.pos[2]], [target.pos[0], target.top, target.pos[2]])
 
+const yawOf = v => Math.round(Math.atan2(v[0], v[2]) / Math.PI * 0x8000)
+
 // Runs once per frame while Mario aims. Picks or keeps a lock, handles
 // C-left / C-right target switching and the trigger (B), and returns the yaw
 // to face. `facing` is where the gun points, for shots without a lock.
-export const updateWeaponAim = (m, input = window.playerInput, facing = m.faceAngle[1]) => {
+// Mid-jump `body` is Mario's torso (torsoInWorld): when a flip leaves the lock
+// somewhere his arms can't point, he aims and fires straight ahead of his chest.
+export const updateWeaponAim = (m, input = window.playerInput, facing = m.faceAngle[1], body = null) => {
     const state = weaponState
     const weapon = currentWeapon()
     const shooter = { pos: chest(m) }
@@ -133,9 +146,10 @@ export const updateWeaponAim = (m, input = window.playerInput, facing = m.faceAn
     // Target switching owns the C-left / C-right press, not the camera.
     input.buttonPressedCl = input.buttonPressedCr = false
     state.target = target
-    // Where the arms point the gun: at the lock, else straight ahead.
-    state.aimPoint = target ? [...target.pos] : null
-    state.aimDir = [Math.sin(facing / 0x8000 * Math.PI), 0, Math.cos(facing / 0x8000 * Math.PI)]
+    // Where the arms point the gun: at the lock if they can, else straight ahead.
+    const lock = target && (!body || canPointAt(body, target.pos)) ? target : null
+    state.aimPoint = lock ? [...lock.pos] : null
+    state.aimDir = body ? body.forward : [Math.sin(facing / 0x8000 * Math.PI), 0, Math.cos(facing / 0x8000 * Math.PI)]
 
     if (state.flash > 0) state.flash--
     const ammo = state.ammo[state.index]
@@ -148,7 +162,11 @@ export const updateWeaponAim = (m, input = window.playerInput, facing = m.faceAn
     if (fired) {
         state.flash = 2
         play_gun_sound(weapon.id)
-        for (const hit of shotHits(shooter, facing, target, candidates, weapon, losBlocked)) {
+        // A shot straight ahead mid-flip goes where his chest faces, and one
+        // into the sky or the ground hits nothing.
+        const level = lock || !body || Math.abs(body.forward[1]) < Math.SQRT1_2
+        const shotYaw = lock || !body ? facing : yawOf(body.forward)
+        for (const hit of level ? shotHits(shooter, shotYaw, lock, candidates, weapon, losBlocked) : []) {
             damageEnemy(hit.target.object, hit.damage)
             hit.target.health = hit.target.object.weaponHealth / maxHealth(hit.target.object)
         }
@@ -161,6 +179,14 @@ export const updateWeaponAim = (m, input = window.playerInput, facing = m.faceAn
 export const stopWeaponAim = () => {
     weaponState.target = null
     weaponState.flash = 0
+}
+
+// A jump from the aim stance: the body keeps facing the target while the jump
+// takes Mario wherever it goes.
+export const startJumpAim = m => {
+    weaponState.airAim = true
+    weaponState.airYaw = weaponState.airAimYaw = m.faceAngle[1]
+    weaponState.airGfx = null
 }
 
 // Before Mario's action runs: B is the trigger while aiming in the air, so it
@@ -201,12 +227,20 @@ export const updateAirAim = (m, setAction, input = window.playerInput) => {
         }
         return
     }
-    if (!wasAiming) weaponState.airYaw = m.faceAngle[1]
-    const aimYaw = updateWeaponAim(m, input, weaponState.airYaw)
-    const turn = int16(Math.round(aimYaw) - weaponState.airYaw)
-    weaponState.airYaw = int16(weaponState.airYaw + Math.max(-0x1800, Math.min(0x1800, turn)))
-    m.marioObj.gfx.angle[1] = weaponState.airYaw
+    const state = weaponState
+    if (!wasAiming) startJumpAim(m)
+    const turn = int16(Math.round(state.airAimYaw) - state.airYaw)
+    state.airYaw = int16(state.airYaw + Math.max(-0x1800, Math.min(0x1800, turn)))
+    // Turn the body to the target on top of the facing the jump gives it (a
+    // side flip faces backwards), unless the action left our last yaw in place.
+    const gfx = m.marioObj.gfx
+    const actionYaw = state.airGfx && gfx.angle[1] === state.airGfx.drawn ? state.airGfx.action : gfx.angle[1]
+    gfx.angle[1] = int16(actionYaw + state.airYaw - m.faceAngle[1])
+    state.airGfx = { action: actionYaw, drawn: gfx.angle[1] }
     pinAirPose(m)
+    const info = gfx.animInfo
+    const body = torsoInWorld(info.curAnim, info.animFrame, m.pos, gfx.angle)
+    state.airAimYaw = updateWeaponAim(m, input, state.airYaw, body)
 }
 
 // Express a camera-space point or direction in the space of a rendered part.

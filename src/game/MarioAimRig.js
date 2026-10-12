@@ -4,6 +4,8 @@
 // solves shoulder → elbow → wrist so the barrel points at the target with the
 // gun kept upright, whatever pose the rest of the body is in.
 //
+import { Mat4, mtxf_rotate_zxy_and_translate, mtxf_rotate_xyz_and_translate, mtxf_mul, mtxf_scale_vec3f } from "../engine/math_util"
+
 // All solving happens in torso space, in model units: x runs up the spine,
 // y faces forward and z points to Mario's left.
 
@@ -48,7 +50,8 @@ export const writeAnimated = (rig, part, frame) => {
     const source = rig.rig.source
     for (let axis = 0; axis < 3; axis++) {
         const index = channel(part, axis)
-        rig.values[rig.rig.slots[part] + axis] = source.values[source.indices[index + 1] + Math.min(frame, source.indices[index] - 1)]
+        rig.values[rig.rig.slots[part] + axis] = source.values[source.indices[index + 1]
+            + Math.max(0, Math.min(frame, source.indices[index] - 1))]
     }
 }
 
@@ -154,3 +157,35 @@ export const solveTwoHanded = ({ point, dir, up }, foregrip) => {
     const leftWrist = add(add(right.wrist, aim, grip), hand[1], foregrip[1])
     return { right: right.rotations, left: solveArm(SHOULDER_L, leftWrist, [-1, 0, 0.5], hand).rotations }
 }
+
+// Where Mario's torso is in the world for an animation frame, as the renderer
+// would draw it (the object transform, the geo's 0.25 scale, then the root,
+// hips and torso): which way his chest faces and where his gun shoulder is.
+const BODY = [[0, 0, 0], [0, 0, 0], [68, 0, 0]]
+export const torsoInWorld = (anim, frame, pos, angle) => {
+    // Animations can start at frame -1 (SM64 steps them before drawing).
+    const at = Math.max(0, frame)
+    const read = ch => {
+        const v = anim.values[anim.indices[ch * 2 + 1] + Math.min(at, anim.indices[ch * 2] - 1)]
+        return v > 32767 ? v - 65536 : v
+    }
+    const object = Mat4()
+    let matrix = Mat4()
+    mtxf_rotate_zxy_and_translate(object, pos, angle)
+    mtxf_scale_vec3f(matrix, object, [0.25, 0.25, 0.25])
+    BODY.forEach((offset, part) => {
+        const local = Mat4(), out = Mat4()
+        const t = part === 0 ? [read(0), read(1), read(2)] : offset
+        mtxf_rotate_xyz_and_translate(local, t, [0, 1, 2].map(axis => read(3 + part * 3 + axis)))
+        mtxf_mul(out, local, matrix)
+        matrix = out
+    })
+    const shoulder = [0, 1, 2].map(j => SHOULDER_R[0] * matrix[0][j] + SHOULDER_R[1] * matrix[1][j]
+        + SHOULDER_R[2] * matrix[2][j] + matrix[3][j])
+    return { up: norm(matrix[0].slice(0, 3)), forward: norm(matrix[1].slice(0, 3)), shoulder }
+}
+
+// Whether Mario's arms can point the gun at `point` from his body as it is:
+// within 80° of where his chest faces.
+const POINTABLE = Math.cos(80 * Math.PI / 180)
+export const canPointAt = (body, point) => dot(norm(sub(point, body.shoulder)), body.forward) >= POINTABLE

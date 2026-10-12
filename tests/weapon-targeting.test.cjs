@@ -114,13 +114,18 @@ const ACT_GUN_AIM = 0x0000023F, ACT_IDLE = 0x0C400201, ACT_WALKING = 0x04000440
 const ACT_BUTT_SLIDE = 0x00840452, ACT_JUMP = 0x03000880, ACT_DOUBLE_JUMP = 0x03000881, ACT_FREEFALL = 0x0100088C
 const ACT_LONG_JUMP = 0x03000888, ACT_WALL_KICK_AIR = 0x03000886, ACT_BACKFLIP = 0x01000883, ACT_GROUND_POUND = 0x008008A9
 const ACT_JUMP_LAND = 0x04000470, ACT_BACKWARD_AIR_KB = 0x010208B0, INPUT_B_PRESSED = 0x2000
+const ACT_TRIPLE_JUMP = 0x01000882, ACT_SPECIAL_TRIPLE_JUMP = 0x030008AF, ACT_SIDE_FLIP = 0x01000887, ACT_DIVE = 0x0188088A
+const ACT_TOP_OF_POLE_JUMP = 0x0300088D, ACT_STEEP_JUMP = 0x03000885, ACT_JUMP_LAND_STOP = 0x0C000230
+const LANDINGS = { ACT_JUMP_LAND, ACT_FREEFALL_LAND: 0x04000471, ACT_DOUBLE_JUMP_LAND: 0x04000472, ACT_SIDE_FLIP_LAND: 0x04000473,
+    ACT_TRIPLE_JUMP_LAND: 0x04000478, ACT_BACKFLIP_LAND: 0x0400047A, ACT_LONG_JUMP_LAND: 0x00000479 }
 function weaponRuntime() {
     const r = runtime({
         'game/Mario.js': { ACT_GUN_AIM, ACT_GROUP_MASK: 0x1C0, ACT_GROUP_STATIONARY: 0, ACT_GROUP_MOVING: 0x40,
             ACT_FLAG_ALLOW_FIRST_PERSON: 1 << 26, ACT_FLAG_INVULNERABLE: 1 << 17, ACT_FLAG_SHORT_HITBOX: 1 << 15,
             ACT_FLAG_RIDING_SHELL: 1 << 16, ACT_FLAG_DIVING: 1 << 19, ACT_FLAG_BUTT_OR_STOMACH_SLIDE: 1 << 18,
             INPUT_OFF_FLOOR: 4, INPUT_B_PRESSED, ACT_JUMP, ACT_DOUBLE_JUMP, ACT_FREEFALL, ACT_LONG_JUMP,
-            ACT_WALL_KICK_AIR, MARIO_ANIM_FIRST_PUNCH: 0x67 },
+            ACT_WALL_KICK_AIR, ACT_TRIPLE_JUMP, ACT_SPECIAL_TRIPLE_JUMP, ACT_BACKFLIP, ACT_SIDE_FLIP,
+            ACT_TOP_OF_POLE_JUMP, ACT_STEEP_JUMP, ...LANDINGS },
         'game/Interaction.js': { INTERACT_BOUNCE_TOP: 1 << 15, INTERACT_BOUNCE_TOP2: 1 << 20,
             INTERACT_HIT_FROM_BELOW: 1 << 22, INTERACT_KOOPA: 1 << 7, INTERACT_BULLY: 1 << 17, INTERACT_MR_BLIZZARD: 1 << 21,
             ATTACK_KICK_OR_TRIP: 2, INT_STATUS_INTERACTED: 1 << 15, INT_STATUS_WAS_ATTACKED: 1 << 14 },
@@ -427,7 +432,7 @@ test('Mario aims and fires through ordinary jumps and falls, turning his body bu
     const { gMarioAnimData } = r.load('actors/mario/marioAnimData.js')
     const jumpAnim = gMarioAnimData[0x4D]
     mario.animation = { animList: gMarioAnimData }
-    mario.marioObj.gfx = { angle: [0, 0, 0], animInfo: { animID: 0x4D, curAnim: jumpAnim } }
+    mario.marioObj.gfx = { angle: [0, 0, 0], animInfo: { animID: 0x4D, curAnim: jumpAnim, animFrame: 0 } }
     const goomba = add(5, object(1000, 0, 1 << 15))   // off to Mario's left
     const held = { buttonDownAim: true }
     const setAction = (m, action) => { m.action = action }
@@ -448,6 +453,8 @@ test('Mario aims and fires through ordinary jumps and falls, turning his body bu
     assert.equal(weapon.isAiming(), true)
     assert.equal(weapon.weaponState.target.object, goomba)
     assert.equal(weapon.geo_mario_gun(1, { flags: 0 })[0], 'pistol', 'the gun shows mid-air')
+    // The body turns toward the target a step at a time, from the next frame.
+    weapon.updateAirAim(mario, setAction, held)
     assert.equal(mario.marioObj.gfx.angle[1], 0x1800, 'the body turns toward the target a step at a time')
     for (let i = 0; i < 5; i++) weapon.updateAirAim(mario, setAction, held)
     assert.equal(mario.marioObj.gfx.angle[1], 0x4000)
@@ -467,11 +474,12 @@ test('Mario aims and fires through ordinary jumps and falls, turning his body bu
     assert.deepEqual(sounds.splice(0), ['pistol'])
     assert.equal(goomba.weaponHealth, 75)
 
-    for (const action of [ACT_DOUBLE_JUMP, ACT_FREEFALL, ACT_LONG_JUMP, ACT_WALL_KICK_AIR]) {
+    for (const action of [ACT_DOUBLE_JUMP, ACT_TRIPLE_JUMP, ACT_SPECIAL_TRIPLE_JUMP, ACT_BACKFLIP, ACT_SIDE_FLIP,
+        ACT_FREEFALL, ACT_LONG_JUMP, ACT_WALL_KICK_AIR, ACT_TOP_OF_POLE_JUMP, ACT_STEEP_JUMP]) {
         mario.action = action
         assert.equal(weapon.canAimInAir(mario, held), true)
     }
-    for (const action of [ACT_BACKFLIP, ACT_GROUND_POUND, ACT_BACKWARD_AIR_KB]) {
+    for (const action of [ACT_GROUND_POUND, ACT_BACKWARD_AIR_KB, ACT_DIVE]) {
         mario.action = action
         assert.equal(weapon.canAimInAir(mario, held), false)
     }
@@ -480,10 +488,17 @@ test('Mario aims and fires through ordinary jumps and falls, turning his body bu
     assert.equal(weapon.canAimInAir(mario, held), false, 'not while carrying something')
     mario.heldObj = null
 
-    // Landing with the button held goes straight back to aiming, facing the target.
+    // Landings keep the gun out without ending the jump, so the next can chain...
     weapon.updateAirAim(mario, setAction, held)
     mario.action = ACT_JUMP_LAND
     mario.input = 4   // off-floor input left over from the landing frame
+    weapon.updateAirAim(mario, setAction, held)
+    assert.equal(mario.action, ACT_JUMP_LAND)
+    assert.equal(weapon.isAiming(), true)
+    mario.input = 0
+    assert.equal(weapon.canStartAiming(mario, held), false, 'the landing is not cut short')
+    // ...and once the landing is over he's back to aiming on the ground, facing the target.
+    mario.action = ACT_JUMP_LAND_STOP
     weapon.updateAirAim(mario, setAction, held)
     assert.equal(mario.action, ACT_GUN_AIM)
     assert.equal(mario.faceAngle[1], 0x4000)
@@ -646,4 +661,69 @@ test('mid-jump the jump animation plays and both hands stay on a two-handed gun'
             assert.ok(along >= 30 && off < 3, `anim ${id} frame ${frame}: left hand ${along.toFixed(0)} along, ${off.toFixed(1)} off the gun`)
         }
     }
+})
+
+test('mid-jump Mario fires at the lock only if he can point at it, else straight ahead of his chest', () => {
+    const { weapon, add, object, mario, r } = weaponRuntime()
+    const { torsoInWorld, canPointAt } = r.load('game/MarioAimRig.js')
+    const { gMarioAnimData: A } = r.load('actors/mario/marioAnimData.js')
+    // Standing upright his chest faces his yaw; partway through a triple jump's flip it doesn't.
+    const upright = torsoInWorld(A[0xC2], 0, [0, 0, 0], [0, 0, 0])
+    assert.ok(upright.forward[2] > 0.95, 'the chest faces +Z at yaw 0')
+    assert.ok(upright.shoulder[1] > 40 && upright.shoulder[0] < 0, 'the gun shoulder is up and to his right')
+    const flipping = Array.from({ length: A[0xC1].unk08 }, (_, f) => torsoInWorld(A[0xC1], f, [0, 0, 0], [0, 0, 0]).forward)
+    assert.ok(flipping.some(f => f[2] < 0), 'the triple jump turns his chest away mid-flip')
+    // A freshly started animation sits at frame -1 before its first step.
+    assert.deepEqual(torsoInWorld(A[0x4C], -1, [0, 0, 0], [0, 0, 0]).forward.map(v => v.toFixed(3)),
+        torsoInWorld(A[0x4C], 0, [0, 0, 0], [0, 0, 0]).forward.map(v => v.toFixed(3)))
+    assert.equal(canPointAt(upright, [0, 100, 1000]), true)
+    assert.equal(canPointAt(upright, [0, 100, -1000]), false)
+
+    const locked = add(5, object(0, 1000, 1 << 15))      // ahead of Mario's yaw
+    const behind = add(5, object(0, -900, 1 << 15))      // where his chest faces mid-flip
+    const fire = { buttonPressedB: true, buttonDownB: true }
+    mario.action = ACT_TRIPLE_JUMP
+    const away = { forward: [0, 0, -1], up: [0, 1, 0], shoulder: [0, 100, 0] }
+    weapon.updateWeaponAim(mario, {}, 0, away)
+    assert.equal(weapon.weaponState.target.object, locked, 'the lock is kept for when he comes round')
+    assert.equal(weapon.weaponState.aimPoint, null, 'the arms point ahead of his chest, not at the lock')
+    assert.deepEqual([...weapon.weaponState.aimDir], [0, 0, -1])
+    weapon.updateWeaponAim(mario, fire, 0, away)
+    assert.equal(locked.weaponHealth, 100)
+    assert.equal(behind.weaponHealth, 75, 'the shot goes straight ahead and hits what is there')
+
+    // Facing the lock, the shot goes to it.
+    for (let i = 0; i < 9; i++) weapon.updateWeaponAim(mario, {}, 0, upright)
+    weapon.updateWeaponAim(mario, fire, 0, { ...upright, shoulder: [0, 100, 0] })
+    assert.equal(locked.weaponHealth, 75)
+    assert.deepEqual([...weapon.weaponState.aimPoint], [...weapon.weaponState.target.pos])
+
+    // Upside down mid-flip the shot goes into the sky and hits nothing.
+    for (let i = 0; i < 9; i++) weapon.updateWeaponAim(mario, {}, 0, away)
+    const clip = weapon.weaponState.ammo[0].clip
+    weapon.updateWeaponAim(mario, fire, 0, { forward: [0, 1, 0], up: [0, 0, 1], shoulder: [0, 100, 0] })
+    assert.equal(weapon.weaponState.ammo[0].clip, clip - 1, 'the gun still fires')
+    assert.equal(locked.weaponHealth + behind.weaponHealth, 150)
+})
+
+test('a side flip keeps its flip while the body turns toward the target', () => {
+    const { weapon, add, object, mario, r } = weaponRuntime()
+    const { gMarioAnimData: A } = r.load('actors/mario/marioAnimData.js')
+    mario.animation = { animList: A }
+    mario.marioObj.gfx = { angle: [0, 0x8000 - 0x10000, 0], animInfo: { animID: 0xBF, curAnim: A[0xBF], animFrame: 3 } }
+    add(5, object(1000, 0, 1 << 15))
+    mario.action = ACT_SIDE_FLIP
+    const held = { buttonDownAim: true }
+    weapon.updateAirAim(mario, () => {}, held)
+    // The flip's own half turn stays; the turn toward the target is added on top.
+    for (let i = 0; i < 6; i++) {
+        mario.marioObj.gfx.angle[1] = -0x8000   // the side flip sets this each frame
+        weapon.updateAirAim(mario, () => {}, held)
+    }
+    assert.equal(weapon.weaponState.airYaw, 0x4000)
+    assert.equal(mario.marioObj.gfx.angle[1], -0x4000, 'half turn + quarter turn to the target')
+    // An action that leaves the drawn yaw alone doesn't make the turn compound.
+    weapon.updateAirAim(mario, () => {}, held)
+    weapon.updateAirAim(mario, () => {}, held)
+    assert.equal(mario.marioObj.gfx.angle[1], -0x4000)
 })
