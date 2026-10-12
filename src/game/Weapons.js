@@ -12,7 +12,7 @@ export const WEAPONS = [
         damage: 25, range: metres(35), clip: 17, interval: 8, reload: 36, auto: false, spread: 5 },
     { id: 'deagle', name: 'Desert Eagle', type: 'WEAPON_DESERT_EAGLE',
         damage: 70, range: metres(35), clip: 7, interval: 20, reload: 45, auto: false, spread: 4 },
-    // Pellets land on every enemy in the cone, weaker with distance.
+    // Pellets land on every target in the cone, weaker with distance.
     { id: 'shotgun', name: 'Shotgun', type: 'WEAPON_SHOTGUN',
         damage: 15, pellets: 6, range: metres(20), clip: 1, interval: 30, reload: 30, auto: false, spread: 14,
         foregrip: [170, 20] },
@@ -48,7 +48,7 @@ export const pullTrigger = (ammo, weapon, pressed, held) => {
 
 // Who a shot hits. With a lock (CPlayerPed::m_pTargetedObject) the bullet goes
 // to the target; otherwise it flies along the aim direction and hits the nearest
-// enemy inside the weapon's spread. Shotgun pellets hit everything in the cone.
+// target inside the weapon's spread. Shotgun pellets hit everything in the cone.
 export const shotHits = (shooter, aimYaw, lock, candidates, weapon, losBlocked) => {
     const inCone = target => !targetHasToBeBroken(shooter, target, weapon)
         && Math.abs(angleOffAim(shooter.pos, target.pos, aimYaw)) <= weapon.spread

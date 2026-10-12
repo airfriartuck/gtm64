@@ -424,6 +424,62 @@ test('pistol and shotgun fire damage and defeat a Luigi fallback', () => {
     }
 })
 
+test('free pistol aim can damage and defeat Luigi before Mario acquires a companion lock', () => {
+    const { weapon, luigi, mario } = weaponRuntime()
+    const companion = luigi(0, 1000)
+    mario.action = ACT_GUN_AIM
+    mario.faceAngle[1] = 0x8000
+    const pistol = weapon.currentWeapon()
+    const fire = { buttonPressedB: true, buttonDownB: true }
+
+    for (let shot = 1; shot <= 4; shot++) {
+        const aimYaw = weapon.updateWeaponAim(mario, fire)
+        assert.equal(aimYaw, 0, 'the camera directs free aim toward Luigi while Mario faces away')
+        assert.equal(weapon.weaponState.target, null, 'Mario facing excludes Luigi from initial lock acquisition')
+        assert.equal(companion.weaponHealth, 100 - shot * pistol.damage,
+            `free aim pistol shot ${shot} damages Luigi without a lock`)
+        if (shot < 4) {
+            for (let frame = 0; frame < pistol.interval; frame++) {
+                weapon.updateWeaponAim(mario, { buttonDownB: true })
+                assert.equal(companion.weaponHealth, 100 - shot * pistol.damage, 'holding a semi-automatic does not fire another shot')
+            }
+        }
+    }
+    assert.equal(companion.weaponDefeated, true, 'four spaced pistol presses finish Luigi')
+    assert.equal(weapon.weaponState.ammo[0].clip, pistol.clip - 4)
+})
+
+test('free shotgun pellets hit Luigi inside their cone without acquiring him', () => {
+    const { weapon, luigi, mario } = weaponRuntime()
+    const companion = luigi(100, 600)
+    mario.action = ACT_GUN_AIM
+    mario.faceAngle[1] = 0x8000
+    weapon.weaponState.index = 2
+    const shotgun = weapon.currentWeapon()
+    const aimYaw = weapon.updateWeaponAim(mario, { buttonPressedB: true, buttonDownB: true })
+    assert.equal(aimYaw, 0)
+    assert.equal(weapon.weaponState.target, null, 'Luigi remains outside Mario-facing acquisition cone')
+    const distance = Math.hypot(100, -20, 600)
+    const damage = Math.round(shotgun.damage * shotgun.pellets * Math.max(0.25, 1 - distance / shotgun.range))
+    assert.equal(companion.weaponHealth, 100 - damage, 'unlocked shotgun pellets damage the companion in their firing cone')
+    assert.ok(weapon.weaponEffects.shots.every(shot => shot.hit), 'the visible pellet effects register Luigi hits')
+})
+
+test('adding Luigi to shot candidates preserves enemy acquisition and held-lock priority', () => {
+    const { weapon, add, object, luigi, mario } = weaponRuntime()
+    const companion = luigi(0, 300)
+    const enemyObject = add(5, object(300, 1000, 1 << 15))
+    mario.action = ACT_GUN_AIM
+    weapon.updateWeaponAim(mario, { buttonPressedB: true, buttonDownB: true })
+    assert.equal(weapon.weaponState.target.object, enemyObject, 'an enemy remains the preferred acquisition despite a closer Luigi')
+    assert.equal(enemyObject.weaponHealth, 75, 'the locked pistol shot damages its enemy')
+    assert.equal(companion.weaponHealth, 100)
+
+    companion.rawData[8] = 150
+    weapon.updateWeaponAim(mario, {})
+    assert.equal(weapon.weaponState.target.object, enemyObject, 'the enemy lock stays stable while the companion moves closer')
+})
+
 const weapons = () => runtime().load('game/Weapons.js')
 
 test('six distinct GTA weapon types, each with a gun model and muzzle flash', () => {

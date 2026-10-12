@@ -152,7 +152,8 @@ export const updateWeaponAim = (m, input = window.playerInput, facing = m.faceAn
     const lists = gLinker.ObjectListProcessor.gObjectLists
     const candidates = collectEnemies(lists)
     const companions = collectCompanions(lists)
-    let target = state.target && [...candidates, ...companions].find(c => c.object === state.target.object)
+    const shotCandidates = [...candidates, ...companions]
+    let target = state.target && shotCandidates.find(c => c.object === state.target.object)
     if (target && (Targeting.targetHasToBeBroken(shooter, target, weapon) || losBlocked(shooter, target))) target = null
     // Enemies take precedence over a companion fallback, including when one
     // becomes eligible while Mario is already tracking Luigi.
@@ -164,7 +165,6 @@ export const updateWeaponAim = (m, input = window.playerInput, facing = m.faceAn
         target = Targeting.findNextLockOnTarget(shooter, target, target.companion ? companions : candidates, weapon,
             Boolean(input.buttonPressedCl), losBlocked) || target
     }
-    if (target && target.companion) candidates.push(target)
     // Target switching owns the C-left / C-right press, not the camera.
     input.buttonPressedCl = input.buttonPressedCr = false
     state.target = target
@@ -191,7 +191,7 @@ export const updateWeaponAim = (m, input = window.playerInput, facing = m.faceAn
         // into the sky or the ground hits nothing.
         const level = lock || !body || Math.abs(body.forward[1]) < Math.SQRT1_2
         const shotYaw = lock || !body ? aimYaw : yawOf(body.forward)
-        const hits = level ? shotHits(shooter, shotYaw, lock, candidates, weapon, losBlocked) : []
+        const hits = level ? shotHits(shooter, shotYaw, lock, shotCandidates, weapon, losBlocked) : []
         effectsArea = gLinker.Area && gLinker.Area.gCurrentArea
         queueWeaponShot(weaponEffects, weapon, hits)
         for (const hit of hits) {
