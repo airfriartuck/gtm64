@@ -9,6 +9,7 @@ export const gGlobalSoundSource = [0, 0, 0]
 
 export const play_sound = (soundBits, pos) => originalAudio.playSound(soundBits, pos)
 export const play_gun_sound = name => playGunSound(originalAudio, name)
+export const play_menu_music = seq => originalAudio.playMenuMusic(seq)
 export const play_music = (player, seqArgs, fadeTimer) => originalAudio.call('play_music', player, seqArgs, fadeTimer)
 export const play_secondary_music = (seqId, bgMusicVolume, volume, fadeTimer) => originalAudio.call('play_secondary_music', seqId, bgMusicVolume, volume, fadeTimer)
 export const func_80321080 = fadeTimer => originalAudio.call('func_80321080', fadeTimer)

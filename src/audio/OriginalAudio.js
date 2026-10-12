@@ -3,6 +3,7 @@ import createSM64Audio from "../../vendor/libsm64-audio/audio"
 export const AUDIO_ROM_START = 0x57B720
 export const AUDIO_ROM_END = 0x7CC6C1
 const SAMPLE_RATE = 32000
+const LEVEL_INTRO = 1
 const origin = [0, 0, 0]
 
 // libsm64 runs the original sequencer and sample mixer. Only the audio region
@@ -183,7 +184,15 @@ export class OriginalAudio {
         }
     }
 
-    update(area) {
+    // SET_MENU_MUSIC runs in the level script right after LOAD_AREA, before the
+    // audio update resets sound for the new area, so hold it until then.
+    playMenuMusic(sequence) {
+        this.menuMusic = sequence
+    }
+
+    // level is gCurrLevelNum; the intro level (1, logo and Mario's face) never
+    // uses up the opening theme meant for the first gameplay area.
+    update(area, level) {
         if (!this.engine || !this.context || this.context.state !== 'running' || document.hidden) {
             this.sounds.clear()
             return
@@ -191,11 +200,16 @@ export class OriginalAudio {
         if (area !== this.area) {
             this.area = area
             this.call('sound_reset', area ? area.musicParam : 0)
-            if (area) {
+            if (area && level !== LEVEL_INTRO) {
                 const sequence = area.musicParam2 || (!this.openingPlayed ? this.openingMusic : 0)
                 if (sequence) this.call('play_music', 0, (4 << 8) | sequence, 0)
                 this.openingPlayed = true
             }
+        }
+        if (this.menuMusic) {
+            // As SM64's set_background_music(0, seq, 0).
+            this.call('play_music', 0, this.menuMusic, 0)
+            this.menuMusic = 0
         }
         const now = this.context.currentTime
         this.nextTime = Math.max(this.nextTime, now + 0.01)

@@ -10,6 +10,7 @@ import { init_graph_node_start } from "./graph_node"
 import { ObjectListProcessorInstance as ObjectListProcessor } from "../game/ObjectListProcessor"
 import { DEGREES } from "../game/Camera"
 import { IngameMenuInstance as IngameMenu } from "../game/IngameMenu"
+import { play_menu_music } from "../audio/external"
 
 const SCRIPT_RUNNING = 1
 const SCRIPT_PAUSED = 0
@@ -158,6 +159,11 @@ class LevelCommands {
     set_register(value) {
         const new_value = value.call ? value() : value
         this.sRegister = new_value
+        this.sCurrentScript.index++
+    }
+
+    set_menu_music(seq) {
+        play_menu_music(seq)
         this.sCurrentScript.index++
     }
 
@@ -607,6 +613,7 @@ export const PAINTING_WARP_NODE = (...args)   => {return {command: Lev.painting_
 export const RETURN = (...args)               => {return {command: Lev.return, args: args}}
 export const ROOMS = (...args)                => {return {command: Lev.rooms, args: args}}
 export const SET_BACKGROUND_MUSIC = (...args) => {return {command: Lev.set_background_music, args: args}}
+export const SET_MENU_MUSIC = (...args)       => {return {command: Lev.set_menu_music, args: args}}
 export const SET_REG = (...args)              => {return {command: Lev.set_register, args: args}}
 export const SHOW_DIALOG = (...args)          => {return {command: Lev.show_dialog, args: args}}
 export const SLEEP = (...args)                => {return {command: Lev.sleep, args: args}}

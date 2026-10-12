@@ -5,7 +5,7 @@ import { ALLOC_LEVEL_POOL, AREA, BLACKOUT, CALL, CALL_LOOP, CLEARDEMOPTR, CLEAR_
          LOAD_MARIO_HEAD, LOAD_MIO0, LOAD_MODEL_FROM_GEO, LOAD_MODEL_FROM_DL, LOAD_RAW,
          MACRO_OBJECTS, MARIO, MARIO_POS, OBJECT, OBJECT_WITH_ACTS, RETURN, SET_REG, SLEEP,
          SLEEP_BEFORE_EXIT, TERRAIN, TERRAIN_TYPE, TRANSITION, UNLOAD_AREA, EXIT_AND_EXECUTE,
-         OP_EQ
+         OP_EQ, SET_MENU_MUSIC
 } from "../../engine/LevelCommands"
 
 import { intro_geo_0002D0, intro_geo_mario_head_regular, intro_geo_mario_head_dizzy, intro_geo_000414 } from "./geo"
@@ -47,7 +47,7 @@ export const level_intro_mario_head_regular = [
     SLEEP(/*frames*/ 2),
     BLACKOUT(/*active*/ false),
     LOAD_AREA(/*area*/ 1),
-    // SET_MENU_MUSIC(/*seq*/ 0x0002),
+    SET_MENU_MUSIC(/*seq*/ 0x0002),
     TRANSITION(/*transType*/ WARP_TRANSITION_FADE_FROM_STAR, /*time*/ 20, /*color*/ 0x00, 0x00, 0x00),
     SLEEP(/*frames*/ 20),
     CALL_LOOP(/*arg*/ 1, /*func*/ lvl_intro_update),
@@ -67,7 +67,7 @@ export const level_intro_mario_head_dizzy = [
     SLEEP(/*frames*/ 2),
     BLACKOUT(/*active*/ false),
     LOAD_AREA(/*area*/ 1),
-    // SET_MENU_MUSIC(/*seq*/ 0x0082),
+    SET_MENU_MUSIC(/*seq*/ 0x0082),
     TRANSITION(/*transType*/ WARP_TRANSITION_FADE_FROM_STAR, /*time*/ 20, /*color*/ 0x00, 0x00, 0x00),
     SLEEP(/*frames*/ 20),
     CALL_LOOP(/*arg*/ 2, /*func*/ lvl_intro_update),
@@ -83,7 +83,7 @@ const level_intro_entry_4 = [
     END_AREA(),
 
     LOAD_AREA(/*area*/ 1),
-    // SET_MENU_MUSIC(/*seq*/ 0x0002),
+    SET_MENU_MUSIC(/*seq*/ 0x0002),
     TRANSITION(/*transType*/ WARP_TRANSITION_FADE_FROM_COLOR, /*time*/ 16, /*color*/ 0xFF, 0xFF, 0xFF),
     SLEEP(/*frames*/ 16),
     CALL_LOOP(/*arg*/ 3, /*func*/ lvl_intro_update),

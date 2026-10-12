@@ -168,6 +168,38 @@ test('opening title music plays once and yields to the next area soundtrack', as
 })
 
 
+test('menu music from the level script plays after the new area resets sound', async () => {
+    const r = runtime()
+    r.audio.engine = r.engine
+    await r.audio.unlock()
+    // LOAD_AREA then SET_MENU_MUSIC both run before the frame's audio update.
+    const face = { musicParam: 0, musicParam2: 0 }
+    r.audio.playMenuMusic(0x02)
+    r.audio.update(face, 1)
+    const names = r.calls.filter(call => call[0] === '_sound_reset' || call[0] === '_play_music')
+    assert.deepEqual(names, [['_sound_reset', 0], ['_play_music', 0, 0x02, 0]], 'reset first, then the title theme')
+    r.calls.length = 0
+    r.audio.update(face, 1)
+    assert.equal(r.calls.filter(call => call[0] === '_play_music').length, 0, 'plays once')
+    // The dizzy face keeps its sequence variation bit.
+    r.audio.playMenuMusic(0x82)
+    r.audio.update(face, 1)
+    assert.ok(r.calls.some(call => call[0] === '_play_music' && call[2] === 0x82))
+})
+
+test('the logo and face screens leave the opening theme for the first gameplay area', async () => {
+    const r = runtime()
+    r.audio.engine = r.engine
+    await r.audio.unlock()
+    r.audio.openingMusic = 2
+    r.audio.update({ musicParam: 0, musicParam2: 0 }, 1)          // logo splash
+    r.audio.update({ musicParam: 0, musicParam2: 0 }, 1)          // already this area
+    r.audio.update({ musicParam: 0, musicParam2: 0 }, 1)          // ...
+    assert.equal(r.calls.filter(call => call[0] === '_play_music').length, 0)
+    r.audio.update({ musicParam: 0, musicParam2: 0 }, 16)         // castle grounds
+    assert.ok(r.calls.some(call => call[0] === '_play_music' && call[2] === 1026))
+})
+
 test('passenger voice uses an isolated mixer, caches clips and cancels stale playback', async () => {
     const r = runtime()
     await r.audio.prepare(new Uint8Array(r.api.AUDIO_ROM_END - r.api.AUDIO_ROM_START))

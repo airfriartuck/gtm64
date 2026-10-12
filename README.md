@@ -41,8 +41,10 @@ once to add its audio banks to the local asset cache. Click **Start Game** to
 enable audio; with autostart, click the page or press a key. **Mute audio** is
 available in the top right. Playback pauses while the tab is hidden.
 
-Music follows each area's original music setting. Starting in the Castle Grounds
-also plays the original title theme; it yields to level music when you enter
+The title screen with Mario's face plays the original title theme, and the
+file and star select menus play their own themes. Music follows each area's
+original music setting. Starting in the Castle Grounds also plays the original
+title theme; it yields to level music when you enter
 another area. Returning to the grounds uses its normal outdoor ambience.
 
 The audio engine uses [libsm64](https://github.com/libsm64/libsm64), compiled to

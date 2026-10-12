@@ -24,7 +24,7 @@ const produce_one_frame = () => {
     Game.main_loop_one_iteration()
     updateWeaponHud()
     try {
-        originalAudio.update(gLinker.Area.gCurrentArea)
+        originalAudio.update(gLinker.Area.gCurrentArea, gLinker.Area.gCurrLevelNum)
         luigiCarDialogue.update(getGardenCar(), performance.now() / 1000, window.playerInput)
     } catch (error) {
         originalAudio.pause()
