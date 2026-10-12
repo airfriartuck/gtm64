@@ -73,6 +73,33 @@ function runtime(render = false) {
     return { load, linker, context, objects, stubs }
 }
 
+// Mario as the car code sees him, and the actions Mario.js passes in.
+const marioState = pos => ({ pos: [...pos], action: 1, health: 0x880, faceAngle: [0, 0, 0], vel: [0, 0, 0],
+    marioObj: { rawData: [], gfx: { flags: 0, animInfo: {} } } })
+const actions = (calls = []) => ({ idle: 1, dive: 2, setAction: (m, action) => { calls.push(action === 2 ? 'dive' : action); m.action = action } })
+const getIn = (r, api, m) => {
+    r.context.window.playerInput = { buttonPressedVehicle: true }
+    api.updateGardenCar(m, actions(), true)
+    r.context.window.playerInput = {}
+    for (let i = 0; i < 200 && !api.getGardenCar().driving; i++) api.updateGardenCar(m, actions(), true)
+    assert.ok(api.getGardenCar().driving, 'Mario got in')
+}
+// Asks to get out and waits until Mario is out, running the car's behavior
+// on its own object so a parked car keeps simulating.
+const getOut = (r, api, m) => {
+    const car = api.getGardenCar(), current = r.objects.gCurrentObject
+    r.context.window.playerInput = { buttonPressedVehicle: true }
+    api.updateGardenCar(m, actions(), true)
+    r.context.window.playerInput = {}
+    for (let i = 0; i < 300 && (car.driving || car.sequence); i++) {
+        r.objects.gCurrentObject = car.object
+        api.bhv_garden_car_loop()
+        r.objects.gCurrentObject = current
+        api.updateGardenCar(m, actions(), true)
+    }
+    assert.ok(!car.driving && !car.sequence, 'Mario got out')
+}
+
 const flatFloor = { normal: { y: 1 }, type: 0 }
 const flatCollision = {
     find_floor(x, y, z, wrapper) { wrapper.floor = flatFloor; return 260 },
@@ -103,12 +130,19 @@ test('Luigi retraces turns and jumps, keeps a following distance, and catches up
     assert.deepEqual([...luigi.pos], [10000,700,10000])
 })
 
-test('Luigi rides in the passenger seat, banks with the car, and follows on exit', () => {
-    const { updateLuigi } = runtime().load('game/LuigiCompanion.js')
-    const luigi = { pos: [0,260,0], path: [], yaw: 0 }
+test('Luigi hops into the passenger seat, banks with the car, and hops out of the passenger side', () => {
+    const { updateLuigi, HOP_FRAMES, PASSENGER_SEAT, PASSENGER_DOOR } = runtime().load('game/LuigiCompanion.js')
+    const luigi = { pos: [-200,260,0], path: [], yaw: 0 }
     const car = { ...state(), driving: true, pitch: 2000, roll: -1000 }
-    assert.equal(updateLuigi(luigi, [car.x,car.y,car.z], car), 'seated')
+    assert.equal(updateLuigi(luigi, [car.x,car.y,car.z], car), 'hopping')
     assert.equal(luigi.riding, true)
+    let highest = 0
+    for (let i = 1; i < HOP_FRAMES - 1; i++) {
+        assert.equal(updateLuigi(luigi, [car.x,car.y,car.z], car), 'hopping')
+        highest = Math.max(highest, luigi.pos[1])
+    }
+    assert.ok(highest > 260 + 60, 'hops up over the door')
+    assert.equal(updateLuigi(luigi, [car.x,car.y,car.z], car), 'seated')
     const first = [...luigi.pos]
     car.x += 500
     car.yaw = 16384
@@ -117,11 +151,16 @@ test('Luigi rides in the passenger seat, banks with the car, and follows on exit
     assert.ok(luigi.pos[0] > first[0] + 300)
     assert.equal(luigi.yaw, car.yaw)
     car.driving = false
-    updateLuigi(luigi, [820,260,0], car)
+    car.pitch = car.roll = 0
+    assert.equal(updateLuigi(luigi, [820,260,0], car), 'hopping')
     assert.equal(luigi.riding, false)
-    assert.deepEqual([...luigi.pos], [820,260,0])
-    updateLuigi(luigi, [820,260,250], null)
-    assert.ok(luigi.pos[2] > 0)
+    for (let i = 1; i < HOP_FRAMES; i++) updateLuigi(luigi, [820,260,0], car)
+    // Landed outside the passenger (right-hand) door, which faces −Z at yaw 16384.
+    assert.ok(Math.abs(luigi.pos[0] - (car.x + PASSENGER_DOOR[2])) < 2)
+    assert.ok(Math.abs(luigi.pos[2] - (car.z - PASSENGER_DOOR[0])) < 2)
+    assert.ok(PASSENGER_SEAT[0] < 0 && PASSENGER_DOOR[0] < PASSENGER_SEAT[0])
+    for (let i = 0; i < 60; i++) updateLuigi(luigi, [820,260,250], null)
+    assert.ok(luigi.pos[2] > -140, 'follows Mario again')
 })
 
 test('Luigi geometry renders with independent green materials and animation', () => {
@@ -182,7 +221,7 @@ test('Luigi geometry renders with independent green materials and animation', ()
     assert.ok(r.context.draws.every(draw => draw.vertices.every(Number.isFinite)))
 })
 
-test('Luigi behavior switches animations on car entry and exit and ignores an unloaded car', () => {
+test('Luigi behavior switches animations as he hops in and out and ignores an unloaded car', () => {
     const r = runtime()
     r.linker.SurfaceCollision = flatCollision
     const c = r.load('include/object_constants.js')
@@ -195,30 +234,34 @@ test('Luigi behavior switches animations on car entry and exit and ignores an un
     const luigi = { rawData: [], gfx: { animInfo: {} } }
     luigi.rawData[c.oPosX] = luigi.rawData[c.oPosZ] = luigi.rawData[c.oFaceAngleYaw] = 0
     luigi.rawData[c.oPosY] = 260
-    const m = { pos: [0,260,0], action: 1, health: 0x880, marioObj: { rawData: [], gfx: { flags: 0 } } }
+    const m = marioState([0,260,300])
     r.linker.LevelUpdate.gMarioState = m
     r.objects.gCurrentObject = luigi
-    const { bhv_luigi_companion_loop } = r.load('game/LuigiCompanion.js')
+    const { bhv_luigi_companion_loop, HOP_FRAMES } = r.load('game/LuigiCompanion.js')
     bhv_luigi_companion_loop()
     const idle = luigi.gfx.animInfo.curAnim
-    r.context.window.playerInput = { buttonPressedVehicle: true }
-    car.updateGardenCar(m, 1, true)
+    getIn(r, car, m)
     bhv_luigi_companion_loop()
     assert.equal(luigi.luigi.riding, true)
-    assert.ok(luigi.gfx.animInfo.curAnim.flags & 4)
+    const hopping = luigi.gfx.animInfo.curAnim
+    assert.notEqual(hopping, idle)
+    for (let i = 0; i < HOP_FRAMES; i++) bhv_luigi_companion_loop()
+    assert.ok(luigi.gfx.animInfo.curAnim.flags & 4, 'frozen seated pose')
     assert.equal(luigi.gfx.animInfo.animFrame, luigi.gfx.animInfo.curAnim.unk08 - 1)
-    assert.notEqual(luigi.gfx.animInfo.curAnim, idle)
     r.context.window.playerInput = { stickY: 64 }
     for (let frame = 0; frame < 200; frame++) {
-        car.updateGardenCar(m, 1, true)
+        car.updateGardenCar(m, actions(), true)
         bhv_luigi_companion_loop()
         assert.ok([c.oPosX,c.oPosY,c.oPosZ].every(field => Number.isFinite(luigi.rawData[field])))
     }
-    r.context.window.playerInput = { buttonPressedVehicle: true }
-    car.updateGardenCar(m, 1, true)
+    getOut(r, car, m)
     bhv_luigi_companion_loop()
     assert.equal(luigi.luigi.riding, false)
-    assert.equal(luigi.gfx.animInfo.curAnim, idle)
+    assert.equal(luigi.gfx.animInfo.curAnim, hopping, 'hops out')
+    for (let i = 0; i < HOP_FRAMES + 2; i++) bhv_luigi_companion_loop()
+    // Back on his feet: walking or standing, neither hopping nor seated.
+    assert.notEqual(luigi.gfx.animInfo.curAnim, hopping)
+    assert.equal(luigi.gfx.animInfo.curAnim.flags & 4, 0)
     r.linker.Area.gCurrentArea = {}
     assert.equal(car.getGardenCar(), null)
     bhv_luigi_companion_loop()
@@ -450,7 +493,7 @@ test('nearby birds can bank into turns without reassigning a constant', () => {
     }
 })
 
-test('enter, move, exit safely and release Mario when changing levels', () => {
+test('Mario walks to the door, vaults in, drives seated, waits to slow down and climbs out', () => {
     const r = runtime()
     r.linker.SurfaceCollision = flatCollision
     const constants = r.load('include/object_constants.js')
@@ -461,26 +504,79 @@ test('enter, move, exit safely and release Mario when changing levels', () => {
     object.rawData[constants.oFaceAngleYaw] = 0
     r.objects.gCurrentObject = object
     const api = r.load('game/GardenCar.js')
+    const sequence = r.load('game/CarEnterExit.js')
     api.bhv_garden_car_loop()
-    const mario = { pos: [0,260,300], action: 1, health: 0x880, marioObj: { rawData: [], gfx: { flags: 0 } } }
+    const mario = marioState([0,260,300])
     r.context.window.playerInput = { buttonPressedVehicle: true }
-    assert.equal(api.updateGardenCar(mario, 1, true), true)
-    assert.equal(mario.marioObj.gfx.flags & 16, 16)
+    assert.equal(api.updateGardenCar(mario, actions(), true), true)
+    assert.equal(mario.marioObj.gfx.flags & 16, 0, 'Mario stays visible')
+    assert.equal(object.gardenCar.driving, false, 'not driving until seated')
+    r.context.window.playerInput = {}
+    const phases = new Set()
+    let frames = 0
+    while (!object.gardenCar.driving && frames++ < 200) {
+        phases.add(object.gardenCar.sequence && object.gardenCar.sequence.phase)
+        api.updateGardenCar(mario, actions(), true)
+    }
+    assert.ok(['approach', 'align', 'getin'].every(phase => phases.has(phase)), [...phases].join())
+    const seat = sequence.carPoint(object.gardenCar, sequence.DRIVER_SEAT)
+    assert.ok(Math.hypot(...mario.pos.map((v, i) => v - seat[i])) < 1, 'sitting in the driver seat')
+    assert.equal(mario.marioObj.gfx.scale[0], sequence.SEATED_SCALE)
+    assert.ok(seat[0] > 0, 'driver sits on the left (+X at yaw 0)')
+    // Drive off, then ask to get out while moving: the car brakes first.
     r.context.window.playerInput = { stickY: 64 }
-    api.updateGardenCar(mario, 1, true)
-    assert.ok(mario.pos[2] > 0)
+    for (let i = 0; i < 20; i++) { api.bhv_garden_car_loop(); api.updateGardenCar(mario, actions(), true) }
+    assert.ok(object.gardenCar.z > 50)
+    assert.ok(Math.hypot(mario.pos[0] - seat[0], mario.pos[2] - object.gardenCar.z) < 5, 'seat moves with the car')
     r.context.window.playerInput = { buttonPressedVehicle: true }
-    assert.equal(api.updateGardenCar(mario, 1, true), false)
-    assert.equal(mario.marioObj.gfx.flags & 16, 0)
-    assert.ok(Math.abs(mario.pos[0]) >= 200, 'exits beside the car')
-    api.updateGardenCar(mario, 1, true)
+    assert.equal(api.updateGardenCar(mario, actions(), true), true)
+    assert.equal(object.gardenCar.waitingToExit, true, 'waits for the car to slow down')
+    r.context.window.playerInput = {}
+    let out = true
+    for (let i = 0; i < 300 && out; i++) { api.bhv_garden_car_loop(); out = api.updateGardenCar(mario, actions(), true) }
+    assert.equal(out, false, 'climbed out')
+    assert.ok(object.gardenCar.kmh < 2)
+    assert.equal(mario.marioObj.gfx.scale[0], 1)
+    assert.equal(mario.action, 1)
+    // Out on the driver's side, clear of the car.
+    assert.ok(mario.pos[0] - object.gardenCar.x >= 200, 'exits beside the driver door')
+    api.updateGardenCar(mario, actions(), true)
     r.linker.Area.gCurrLevelNum = 6
-    assert.equal(api.updateGardenCar(mario, 1, true), false)
-    assert.equal(mario.marioObj.gfx.flags & 16, 0)
+    assert.equal(api.updateGardenCar(mario, actions(), true), false)
     r.linker.Area.gCurrLevelNum = 16
     r.linker.Area.gCurrentArea = {}
-    assert.equal(api.updateGardenCar(mario, 1, true), false)
+    assert.equal(api.updateGardenCar(mario, actions(), true), false)
     assert.equal(object.gardenCar.driving, false)
+})
+
+test('at speed Mario rolls out GTA-style and the empty car carries on', () => {
+    const r = runtime()
+    r.linker.SurfaceCollision = flatCollision
+    const constants = r.load('include/object_constants.js')
+    const object = { rawData: [], activeFlags: 1 }
+    object.rawData[constants.oPosX] = object.rawData[constants.oPosZ] = object.rawData[constants.oFaceAngleYaw] = 0
+    object.rawData[constants.oPosY] = 260
+    r.objects.gCurrentObject = object
+    const api = r.load('game/GardenCar.js')
+    api.bhv_garden_car_loop()
+    const mario = marioState([0,260,300])
+    getIn(r, api, mario)
+    r.context.window.playerInput = { stickY: 64 }
+    for (let i = 0; i < 600 && object.gardenCar.kmh < 80; i++) { api.bhv_garden_car_loop(); api.updateGardenCar(mario, actions(), true) }
+    assert.ok(object.gardenCar.kmh >= 80)
+    const calls = []
+    r.context.window.playerInput = { buttonPressedVehicle: true }
+    api.updateGardenCar(mario, actions(calls), true)
+    assert.equal(object.gardenCar.driving, false, 'Mario lets go of the wheel')
+    assert.equal(object.gardenCar.sequence.phase, 'jumpout')
+    r.context.window.playerInput = {}
+    let owned = true
+    for (let i = 0; i < 20 && owned; i++) { api.bhv_garden_car_loop(); owned = api.updateGardenCar(mario, actions(calls), true) }
+    assert.deepEqual(calls, ['dive'])
+    assert.ok(mario.forwardVel >= 24, 'dives clear with momentum')
+    const z = object.gardenCar.z
+    for (let i = 0; i < 10; i++) api.bhv_garden_car_loop()
+    assert.ok(object.gardenCar.z > z + 50, 'the empty car keeps rolling')
 })
 
 test('exit stays blocked when all nearby spaces are unsafe', () => {
@@ -643,9 +739,10 @@ test('the Mustang model is baked within budget, upright, nose to +Z, with glass 
 })
 
 test('Luigi sits in the passenger seat, on the far side from the driver', () => {
-    const { updateLuigi, PASSENGER_SEAT } = runtime().load('game/LuigiCompanion.js')
+    const { updateLuigi, PASSENGER_SEAT, HOP_FRAMES } = runtime().load('game/LuigiCompanion.js')
     const luigi = { pos: [0, 0, 0], path: [], yaw: 0 }
-    updateLuigi(luigi, [0, 0, 0], { ...state(), x: 1000, y: 260, z: 2000, yaw: 0, driving: true })
+    const car = { ...state(), x: 1000, y: 260, z: 2000, yaw: 0, driving: true }
+    for (let i = 0; i <= HOP_FRAMES; i++) updateLuigi(luigi, [0, 0, 0], car)
     // +X is the driver's (left) side of a car facing +Z.
     assert.ok(PASSENGER_SEAT[0] < 0)
     assert.deepEqual([...luigi.pos].map(Math.round), [1000 + PASSENGER_SEAT[0], 260 + PASSENGER_SEAT[1], 2000 + PASSENGER_SEAT[2]])

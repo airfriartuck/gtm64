@@ -79,7 +79,12 @@ Controls** to switch to this layout.
 
 A 1965 Ford Mustang convertible is parked on the starting lawn in the Castle
 Grounds (Main Map).
-Walk up to it and press **E** or the game's **B** button to enter or exit.
+Walk up to it and press **E** or the game's **B** button to get in or out.
+As in GTA San Andreas, Mario walks to the driver's door (round the car if he's on
+the far side), lines up and vaults over the convertible's door into his seat;
+Luigi hops into the passenger seat. To get out, Mario climbs over the door once
+the car has stopped (it brakes for you if you're rolling slowly), or dives out
+and rolls clear at around 40–90 km/h, leaving the empty car to coast on.
 Use **Up** to accelerate, **Down** to brake and then reverse, and **Left / Right**
 to steer. The gamepad's left stick works too. The jump button is the handbrake
 and crouch is the footbrake (**Space / Z** with the default keyboard controls).

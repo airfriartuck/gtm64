@@ -126,28 +126,72 @@ const wander = (state, world) => {
     if (remaining < 25) pause(state, world, 40 + world.random() * 100)
 }
 
+// Car-space point → world, with the car's yaw, pitch and bank.
+const carPoint = (car, [sx, sy, sz]) => {
+    const yaw = car.yaw * Math.PI / 32768
+    const pitch = (car.pitch || 0) * Math.PI / 32768
+    const roll = (car.roll || 0) * Math.PI / 32768
+    const x = sx * Math.cos(roll) - sy * Math.sin(roll)
+    const y = sx * Math.sin(roll) + sy * Math.cos(roll)
+    const z = sz * Math.cos(pitch) + y * Math.sin(pitch)
+    return [car.x + x * Math.cos(yaw) + z * Math.sin(yaw),
+        car.y + y * Math.cos(pitch) - sz * Math.sin(pitch),
+        car.z - x * Math.sin(yaw) + z * Math.cos(yaw)]
+}
+// Where Luigi stands to climb in and lands when getting out.
+export const PASSENGER_DOOR = [-140, 0, 10]
+export const HOP_FRAMES = 20
+
+// A hop over the convertible's door between two points, like Mario's.
+const hop = (state, to) => {
+    const t = Math.min(++state.hop.frame / HOP_FRAMES, 1)
+    const k = t * t * (3 - 2 * t)
+    state.pos = state.hop.from.map((v, i) => v + (to[i] - v) * k)
+    state.pos[1] += Math.sin(Math.PI * t) * 80
+    if (t >= 1) state.hop = null
+    return t >= 1
+}
+
 // world = { collision, random } lets Luigi explore on his own; without it he
 // only follows Mario's trail.
 export const updateLuigi = (state, marioPos, car, world = null) => {
     if (car && car.driving) {
-        const yaw = car.yaw * Math.PI / 32768
-        // Local passenger seat, rotated with the car's yaw, pitch and bank.
-        const pitch = (car.pitch || 0) * Math.PI / 32768
-        const roll = (car.roll || 0) * Math.PI / 32768
-        const [sx, sy, sz] = PASSENGER_SEAT
-        const x = sx * Math.cos(roll) - sy * Math.sin(roll)
-        const y = sx * Math.sin(roll) + sy * Math.cos(roll)
-        const z = sz * Math.cos(pitch) + y * Math.sin(pitch)
-        state.pos = [car.x + x * Math.cos(yaw) + z * Math.sin(yaw),
-            car.y + y * Math.cos(pitch) - sz * Math.sin(pitch),
-            car.z - x * Math.sin(yaw) + z * Math.cos(yaw)]
+        const seat = carPoint(car, PASSENGER_SEAT)
+        if (!state.riding) {
+            // Climb in over the passenger door as the car sets off.
+            state.riding = true
+            state.hop = { from: [...state.pos], frame: 0, kind: 'in' }
+            state.path = []
+            state.trailEnd = null
+            state.mode = 'follow'
+            state.speed = 0
+            state.hopHeight = 0
+        }
         state.yaw = car.yaw
+        if (state.hop && state.hop.kind === 'in' && !hop(state, seat)) return 'hopping'
+        state.hop = null
+        state.pos = seat
+        return 'seated'
+    }
+    if (state.riding) {
+        // Mario has got out: hop out of the passenger side too.
+        state.riding = false
         state.path = []
         state.trailEnd = null
-        state.riding = true
-        state.mode = 'follow'
-        state.speed = 0
-        return 'seated'
+        if (car) {
+            const door = carPoint(car, PASSENGER_DOOR)
+            const ground = world && groundAt(world.collision, door[0], car.y, door[2])
+            door[1] = ground === null || ground === undefined ? car.y : ground
+            state.hop = { from: [...state.pos], frame: 0, kind: 'out', to: door }
+        } else {
+            state.pos = [...marioPos]
+        }
+    }
+    if (state.hop && state.hop.kind === 'out') {
+        if (!hop(state, state.hop.to)) return 'hopping'
+        // Landed: stand for this frame, then pick up Mario's trail.
+        state.lastMario = null
+        return 'idle'
     }
     state.speed = state.speed || 0
     state.mode = state.mode || 'follow'
