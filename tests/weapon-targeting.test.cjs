@@ -129,9 +129,11 @@ function weaponRuntime() {
         'game/Interaction.js': { INTERACT_BOUNCE_TOP: 1 << 15, INTERACT_BOUNCE_TOP2: 1 << 20,
             INTERACT_HIT_FROM_BELOW: 1 << 22, INTERACT_KOOPA: 1 << 7, INTERACT_BULLY: 1 << 17, INTERACT_MR_BLIZZARD: 1 << 21,
             ATTACK_KICK_OR_TRIP: 2, INT_STATUS_INTERACTED: 1 << 15, INT_STATUS_WAS_ATTACKED: 1 << 14 },
-        'engine/graph_node.js': { GRAPH_RENDER_ACTIVE: 1, GRAPH_RENDER_INVISIBLE: 16 },
+        'engine/graph_node.js': { GRAPH_RENDER_ACTIVE: 1, GRAPH_RENDER_INVISIBLE: 16, GEO_CONTEXT_RENDER: 1 },
         'engine/GeoLayout.js': { LAYER_OPAQUE: 1 },
-        'actors/mario_gun/model.inc.js': { mario_gun_dls: new Proxy({}, { get: (t, id) => ({ dl: [id], flashDl: [id, 'flash'] }) }) },
+        'actors/mario_gun/model.inc.js': { mario_gun_dls: new Proxy({}, { get: (t, id) => ({
+            dl: [id], flashDl: [id, 'flash'], muzzle: [240, 61],
+        }) }) },
         'audio/external.js': { play_gun_sound: (sound) => sounds.push(sound) },
     })
     const sounds = []
@@ -241,6 +243,7 @@ test('six distinct GTA weapon types, each with a gun model and muzzle flash', ()
         const model = mario_gun_dls[weapon.id]
         assert.ok(model && model.dl.length > 10, `${weapon.id} has a model`)
         assert.ok(model.flashDl.length > model.dl.length, `${weapon.id} has a muzzle flash`)
+        assert.ok(model.muzzle.length === 2 && model.muzzle.every(Number.isFinite), `${weapon.id} exposes its muzzle position`)
     }
     assert.equal(new Set(WEAPONS.map(w => JSON.stringify(mario_gun_dls[w.id].dl))).size, WEAPONS.length, 'models differ')
     assert.equal(nextWeapon(0), 1)
@@ -343,6 +346,23 @@ test('B fires at the lock, tints the marker, and the lock moves on after a kill'
     assert.equal(weapon.weaponState.ammo[0].clip, 13)
 })
 
+test('shotgun spread follows the current aim while Mario is still turning toward the lock', () => {
+    const { weapon, add, object, mario } = weaponRuntime()
+    const lock = add(5, object(1000, 900, 1 << 15))
+    const besideLock = add(5, object(1050, 1050, 1 << 15))
+    const oldFacing = add(5, object(0, 900, 1 << 15))
+    mario.action = ACT_GUN_AIM
+    mario.faceAngle[1] = 0
+    weapon.weaponState.index = 2
+    weapon.weaponState.target = { object: lock }
+
+    const aimYaw = weapon.updateWeaponAim(mario, { buttonPressedB: true, buttonDownB: true })
+    assert.ok(aimYaw > 0x2000, 'the selected enemy is well outside the previous body heading')
+    assert.ok(lock.weaponHealth < 100)
+    assert.ok(besideLock.weaponHealth < 100, 'pellets follow the selected target direction')
+    assert.equal(oldFacing.weaponHealth, 100, 'enemies along the old body heading are outside the blast')
+})
+
 test('R cycles weapons, each with its own clip, and the hand shows the selected gun', () => {
     const { weapon, mario } = weaponRuntime()
     mario.action = ACT_GUN_AIM
@@ -396,6 +416,207 @@ test('strafing animations walk the legs while the upper body holds the aiming po
     assert.equal(strafeDirection(0x4000, 0), 'left')
     assert.equal(strafeDirection(-0x4000, 0), 'right')
     assert.equal(strafeDirection(0x4000 - 100, -0x8000 + 0x4000), 'backward', 'wraps around ±180°')
+})
+
+const transformPoint = (matrix, point) => [0, 1, 2].map(component =>
+    matrix[3][component] + point.reduce((sum, value, axis) => sum + value * matrix[axis][component], 0))
+
+const forwardInWorld = (matrix, cameraMatrix) => [0, 1, 2].map(axis =>
+    matrix[0].slice(0, 3).reduce((sum, value, component) => sum + value * cameraMatrix[axis][component], 0))
+
+const animationValue = (animation, part, axis, frame) => {
+    const index = (3 + part * 3 + axis) * 2
+    const value = animation.values[animation.indices[index + 1] + Math.min(frame, animation.indices[index] - 1)]
+    return value > 32767 ? value - 65536 : value
+}
+
+const armHandMatrix = (math, shoulderMatrix, animation, frame) => {
+    let matrix = shoulderMatrix
+    // These are the actual right arm, forearm and hand offsets in Mario's geo.
+    for (const [part, length] of [[9, 0], [10, 65], [11, 60]]) {
+        const joint = math.Mat4(), result = math.Mat4()
+        math.mtxf_rotate_xyz_and_translate(joint, [length, 0, 0],
+            [0, 1, 2].map(axis => animationValue(animation, part, axis, frame)))
+        math.mtxf_mul(result, joint, matrix)
+        matrix = result
+    }
+    return matrix
+}
+
+const assertBarrelHits = (handMatrix, muzzle, cameraMatrix, target, label) => {
+    const origin = transformPoint(handMatrix, [muzzle[0], muzzle[1], 0])
+    const forward = handMatrix[0].slice(0, 3)
+    const targetView = transformPoint(cameraMatrix, target)
+    const delta = targetView.map((value, axis) => value - origin[axis])
+    const along = delta.reduce((sum, value, axis) => sum + value * forward[axis], 0)
+        / forward.reduce((sum, value) => sum + value * value, 0)
+    const miss = Math.hypot(...delta.map((value, axis) => value - along * forward[axis]))
+    assert.ok(along > 0, `${label}: target is ahead of the muzzle`)
+    assert.ok(miss < 1e-6, `${label}: barrel ray misses target by ${miss} units`)
+}
+
+const aimScene = (math, position, rotation, scale, camera) => {
+    const world = math.Mat4(), view = math.Mat4(), shoulder = math.Mat4()
+    math.mtxf_rotate_xyz_and_translate(world, position, rotation)
+    math.mtxf_scale_vec3f(world, world, [scale, scale, scale])
+    math.mtxf_lookat(view, camera.pos, camera.focus, camera.roll || 0)
+    math.mtxf_mul(shoulder, world, view)
+    return { shoulder, view }
+}
+
+test('every gun barrel points through the target in idle and strafing animations', () => {
+    const r = runtime()
+    const math = r.load('engine/math_util.js')
+    const { createAimAnimation, alignAimArm } = r.load('game/MarioAimAnimation.js')
+    const { gMarioAnimData } = r.load('actors/mario/marioAnimData.js')
+    const { mario_gun_dls } = r.load('actors/mario_gun/model.inc.js')
+    const pose = gMarioAnimData[0x67]
+    const animations = [
+        createAimAnimation(pose, pose, 10),
+        createAimAnimation(gMarioAnimData[0x48], pose, 10),
+        createAimAnimation(gMarioAnimData[0x48], pose, 10, { reverse: true }),
+        createAimAnimation(gMarioAnimData[0x7F], pose, 10),
+        createAimAnimation(gMarioAnimData[0x80], pose, 10),
+    ]
+    const scenes = [
+        { pos: [-220, 90, 450], rotation: [2300, 16000, -1800], scale: 1,
+            camera: { pos: [800, 900, -1600], focus: [200, 150, 400], roll: 0.17 }, target: [1000, 340, 1650] },
+        { pos: [760, 430, -250], rotation: [-1900, -32000, 4200], scale: 0.75,
+            camera: { pos: [-1200, 700, 1100], focus: [100, 300, -200], roll: -0.22 }, target: [-350, -100, -1700] },
+        { pos: [150, -40, 800], rotation: [3000, -12000, 1600], scale: 1.3,
+            camera: { pos: [1400, 100, 2200], focus: [0, 140, 0] }, target: [150, 1200, 800] },
+    ]
+    for (const [id, model] of Object.entries(mario_gun_dls)) {
+        for (const scene of scenes) for (const animation of animations) {
+            for (const frame of [0, Math.floor(animation.unk08 / 2), animation.unk08 - 1]) {
+                const { shoulder, view } = aimScene(math, scene.pos, scene.rotation, scene.scale, scene.camera)
+                const translation = [...shoulder[3]]
+                alignAimArm(shoulder, view, scene.target, 0, model.muzzle[1])
+                assert.deepEqual([...shoulder[3]], translation, 'the shoulder stays attached to Mario')
+                for (const axis of shoulder.slice(0, 3)) {
+                    assert.ok(Math.abs(Math.hypot(...axis.slice(0, 3)) - scene.scale) < 1e-10, 'Mario scale is retained')
+                }
+                assertBarrelHits(armHandMatrix(math, shoulder, animation, frame), model.muzzle, view, scene.target,
+                    `${id}, frame ${frame}, scale ${scene.scale}`)
+            }
+        }
+    }
+    assert.equal(animations[2].flags & 2, 2, 'backward strafing retains reverse playback')
+    assert.equal(animations[1].unk08, gMarioAnimData[0x48].unk08, 'leg animation retains its walk cycle')
+    for (const animation of [animations[1], animations[2]]) {
+        for (const frame of [0, 20, 60]) for (const part of [12, 13, 14, 17, 18]) for (let axis = 0; axis < 3; axis++) {
+            assert.equal(animationValue(animation, part, axis, frame), animationValue(gMarioAnimData[0x48], part, axis, frame),
+                `leg ${part} remains animated while aiming`)
+        }
+    }
+    assert.ok([9, 10, 11].some(part => [0, 1, 2].some(axis => animationValue(pose, part, axis, 4) !== 0)),
+        'the punch arm contains rotations that need correction')
+})
+
+test('free aim follows a horizontal yaw through rotated cameras and close targets stay finite', () => {
+    const r = runtime()
+    const math = r.load('engine/math_util.js')
+    const { alignAimArm } = r.load('game/MarioAimAnimation.js')
+    const scene = { pos: [240, 180, -380], rotation: [4000, 7000, -3000], scale: 0.9,
+        camera: { pos: [950, 700, -1250], focus: [150, 100, 80], roll: 0.3 } }
+    for (const yaw of [0, 0x4000, -0x4000, 0x8000, -0x8000 + 1]) {
+        const { shoulder, view } = aimScene(math, scene.pos, scene.rotation, scene.scale, scene.camera)
+        alignAimArm(shoulder, view, null, yaw, 61)
+        const worldForward = forwardInWorld(shoulder, view)
+        const radians = yaw * Math.PI / 0x8000
+        const expected = [Math.sin(radians) * scene.scale, 0, Math.cos(radians) * scene.scale]
+        assert.ok(Math.hypot(...worldForward.map((value, axis) => value - expected[axis])) < 1e-10,
+            `free aim follows yaw ${yaw}`)
+    }
+    for (const target of [scene.pos, [240, 181, -380], [240, 180, -379], [240, -820, -380]]) {
+        const { shoulder, view } = aimScene(math, scene.pos, scene.rotation, scene.scale, scene.camera)
+        alignAimArm(shoulder, view, target, 0x8000, 70)
+        assert.ok(shoulder.flat().every(Number.isFinite), 'close and vertical targets produce finite matrices')
+    }
+})
+
+test('the shoulder geo tracks current enemy position and Mario movement between aim updates', () => {
+    const { weapon, add, object, mario, r } = weaponRuntime()
+    const math = r.load('engine/math_util.js')
+    const enemyObject = add(5, object(200, 1500, 1 << 15, { hitboxHeight: 180, hitboxDownOffset: 20 }))
+    mario.action = ACT_GUN_AIM
+    weapon.updateWeaponAim(mario, {})
+    const cachedPosition = [...weapon.weaponState.target.pos]
+    const camera = { pos: [750, 780, -1200], focus: [100, 150, 500], roll: 0.15 }
+    const scene = position => aimScene(math, position, [2100, -6000, 1400], 1, camera)
+    const first = scene([40, 130, 30])
+    r.linker.GeoRenderer = { gCurGraphNodeObject: { object: mario.marioObj }, gCurGraphNodeCamera: { matrixPtr: first.view } }
+
+    for (const movement of [
+        { shoulder: [40, 130, 30], target: [200, 160, 1500] },
+        { shoulder: [-100, 180, 110], target: [-650, 550, 1300] },
+        { shoulder: [150, 90, -60], target: [900, -200, 1600] },
+    ]) {
+        enemyObject.rawData[6] = movement.target[0]
+        enemyObject.rawData[7] = movement.target[1]
+        enemyObject.rawData[8] = movement.target[2]
+        const { shoulder, view } = scene(movement.shoulder)
+        r.linker.GeoRenderer.gCurGraphNodeCamera.matrixPtr = view
+        weapon.geo_mario_aim_arm(1, {}, shoulder)
+        const targetCentre = [movement.target[0], movement.target[1] - 20 + 90, movement.target[2]]
+        // The corrected descendant arm is straight, placing the wrist 125 units out.
+        const wrist = math.Mat4(), hand = math.Mat4()
+        math.mtxf_translate(wrist, [125, 0, 0])
+        math.mtxf_mul(hand, wrist, shoulder)
+        assertBarrelHits(hand, [240, 61], view, targetCentre, 'moving target')
+        assert.deepEqual([...weapon.weaponState.target.pos], cachedPosition, 'the test uses a cached target snapshot')
+    }
+
+    const { shoulder, view } = scene([40, 130, 30])
+    const untouched = shoulder.map(axis => [...axis])
+    weapon.geo_mario_aim_arm(0, {}, shoulder)
+    assert.deepEqual(shoulder.map(axis => [...axis]), untouched, 'layout creation does not mutate the arm')
+    mario.action = ACT_IDLE
+    weapon.geo_mario_aim_arm(1, {}, shoulder)
+    assert.deepEqual(shoulder.map(axis => [...axis]), untouched, 'normal Mario animations are untouched')
+    mario.action = ACT_GUN_AIM
+    r.linker.GeoRenderer.gCurGraphNodeObject = { object: {} }
+    weapon.geo_mario_aim_arm(1, {}, shoulder)
+    assert.deepEqual(shoulder.map(axis => [...axis]), untouched, 'other rendered objects are untouched')
+
+    r.linker.GeoRenderer.gCurGraphNodeObject = { object: mario.marioObj }
+    weapon.stopWeaponAim()
+    enemyObject.activeFlags = 0
+    const expectedYaw = Math.atan2(r.linker.Camera.gLakituState.focus[0] - r.linker.Camera.gLakituState.pos[0],
+        r.linker.Camera.gLakituState.focus[2] - r.linker.Camera.gLakituState.pos[2])
+    weapon.updateWeaponAim(mario, { buttonPressedB: true, buttonDownB: true })
+    r.linker.Camera.gLakituState.focus = [1000, 100, -800]
+    weapon.geo_mario_aim_arm(1, {}, shoulder)
+    // A camera update after firing must not change that frame's barrel heading.
+    const worldForward = forwardInWorld(shoulder, view)
+    assert.ok(Math.abs(worldForward[1]) < 1e-10)
+    assert.ok(Math.abs(Math.atan2(worldForward[0], worldForward[2]) - expectedYaw) < 1e-10)
+})
+
+test('a killing shot keeps the muzzle flash pointed at its victim until the next aim update', () => {
+    const { weapon, add, object, mario, r } = weaponRuntime()
+    const math = r.load('engine/math_util.js')
+    const victim = add(5, object(600, 1200, 1 << 15, { weaponHealth: 25 }))
+    mario.action = ACT_GUN_AIM
+    weapon.updateWeaponAim(mario, { buttonPressedB: true, buttonDownB: true })
+    assert.equal(victim.weaponDefeated, true)
+    assert.equal(weapon.weaponState.target, null, 'the gameplay lock is released after the kill')
+    assert.equal(weapon.weaponState.aimTarget, victim, 'the rendered shot retains its target')
+    assert.equal(weapon.geo_mario_gun(1, { flags: 0 })[1], 'flash')
+
+    const camera = { pos: [-700, 600, -1500], focus: [100, 150, 500], roll: -0.1 }
+    const { shoulder, view } = aimScene(math, [40, 130, 30], [1300, -5000, 900], 1, camera)
+    r.linker.GeoRenderer = { gCurGraphNodeObject: { object: mario.marioObj }, gCurGraphNodeCamera: { matrixPtr: view } }
+    weapon.geo_mario_aim_arm(1, {}, shoulder)
+    const wrist = math.Mat4(), hand = math.Mat4()
+    math.mtxf_translate(wrist, [125, 0, 0])
+    math.mtxf_mul(hand, wrist, shoulder)
+    assertBarrelHits(hand, [240, 61], view, [600, 50, 1200], 'killing shot')
+
+    weapon.updateWeaponAim(mario, {})
+    assert.equal(weapon.weaponState.aimTarget, null, 'the next aim update resumes free aim')
+    weapon.stopWeaponAim()
+    assert.equal(weapon.weaponState.aimTarget, null)
 })
 
 test('shots, reloads, dry fire and switching each make their sound', () => {

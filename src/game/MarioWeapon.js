@@ -1,5 +1,5 @@
 import { oPosX, oPosY, oPosZ, oInteractType, oInteractStatus, oAction, BOBOMB_ACT_EXPLODE } from "../include/object_constants"
-import { GRAPH_RENDER_ACTIVE, GRAPH_RENDER_INVISIBLE } from "../engine/graph_node"
+import { GEO_CONTEXT_RENDER, GRAPH_RENDER_ACTIVE, GRAPH_RENDER_INVISIBLE } from "../engine/graph_node"
 import { LAYER_OPAQUE } from "../engine/GeoLayout"
 import { INTERACT_BOUNCE_TOP, INTERACT_BOUNCE_TOP2, INTERACT_HIT_FROM_BELOW, INTERACT_KOOPA,
     INTERACT_BULLY, INTERACT_MR_BLIZZARD, ATTACK_KICK_OR_TRIP, INT_STATUS_INTERACTED, INT_STATUS_WAS_ATTACKED } from "./Interaction"
@@ -25,7 +25,7 @@ const ENEMY_INTERACTIONS = INTERACT_BOUNCE_TOP | INTERACT_BOUNCE_TOP2 | INTERACT
 const ENEMY_BEHAVIORS = ['bhvBobomb', 'bhvChuckya']
 const ENEMY_LISTS = [2, 4, 5] // OBJ_LIST_DESTRUCTIVE, OBJ_LIST_GENACTOR, OBJ_LIST_PUSHABLE
 
-export const weaponState = { index: 0, ammo: newAmmo(), target: null, flash: 0, hudFrames: 0, airAim: false, airYaw: 0,
+export const weaponState = { index: 0, ammo: newAmmo(), target: null, aimTarget: null, aimYaw: 0, flash: 0, hudFrames: 0, airAim: false, airYaw: 0,
     airAimYaw: 0, airGfx: null, aimPoint: null, aimDir: [0, 0, 1] }
 export const currentWeapon = () => WEAPONS[weaponState.index]
 
@@ -69,6 +69,10 @@ export const canStartAiming = (m, input = window.playerInput, landed = false) =>
 
 const chest = m => [m.pos[0], m.pos[1] + 100, m.pos[2]]
 
+const targetPosition = object => [object.rawData[oPosX],
+    object.rawData[oPosY] - (object.hitboxDownOffset || 0) + (object.hitboxHeight || 100) / 2,
+    object.rawData[oPosZ]]
+
 const asTarget = object => {
     const gfx = object.gfx || {}
     const height = object.hitboxHeight || 100
@@ -76,7 +80,7 @@ const asTarget = object => {
     if (object.weaponHealth === undefined) object.weaponHealth = maxHealth(object)
     return {
         object,
-        pos: [object.rawData[oPosX], object.rawData[oPosY] - down + height / 2, object.rawData[oPosZ]],
+        pos: targetPosition(object),
         top: object.rawData[oPosY] - down + height,
         visible: Boolean(gfx.flags & GRAPH_RENDER_ACTIVE) && !(gfx.flags & GRAPH_RENDER_INVISIBLE),
         health: object.weaponHealth / maxHealth(object),
@@ -148,8 +152,11 @@ export const updateWeaponAim = (m, input = window.playerInput, facing = m.faceAn
     state.target = target
     // Where the arms point the gun: at the lock if they can, else straight ahead.
     const lock = target && (!body || canPointAt(body, target.pos)) ? target : null
+    const aimYaw = target ? Targeting.yawTo(m.pos, target.pos) : cameraYaw(lakitu)
+    state.aimTarget = lock ? lock.object : null
+    state.aimYaw = aimYaw
     state.aimPoint = lock ? [...lock.pos] : null
-    state.aimDir = body ? body.forward : [Math.sin(facing / 0x8000 * Math.PI), 0, Math.cos(facing / 0x8000 * Math.PI)]
+    state.aimDir = body ? body.forward : [Math.sin(aimYaw / 0x8000 * Math.PI), 0, Math.cos(aimYaw / 0x8000 * Math.PI)]
 
     if (state.flash > 0) state.flash--
     const ammo = state.ammo[state.index]
@@ -165,7 +172,7 @@ export const updateWeaponAim = (m, input = window.playerInput, facing = m.faceAn
         // A shot straight ahead mid-flip goes where his chest faces, and one
         // into the sky or the ground hits nothing.
         const level = lock || !body || Math.abs(body.forward[1]) < Math.SQRT1_2
-        const shotYaw = lock || !body ? facing : yawOf(body.forward)
+        const shotYaw = lock || !body ? aimYaw : yawOf(body.forward)
         for (const hit of level ? shotHits(shooter, shotYaw, lock, candidates, weapon, losBlocked) : []) {
             damageEnemy(hit.target.object, hit.damage)
             hit.target.health = hit.target.object.weaponHealth / maxHealth(hit.target.object)
@@ -173,11 +180,12 @@ export const updateWeaponAim = (m, input = window.playerInput, facing = m.faceAn
         // A defeated enemy is finished; the next frame locks on to someone else.
         if (target && target.object.weaponDefeated) state.target = null
     }
-    return target ? Targeting.yawTo(m.pos, target.pos) : cameraYaw(lakitu)
+    return aimYaw
 }
 
 export const stopWeaponAim = () => {
     weaponState.target = null
+    weaponState.aimTarget = null
     weaponState.flash = 0
 }
 
@@ -262,9 +270,11 @@ export const geo_mario_aim_arms = (callContext, node, torso) => {
     const state = weaponState
     const toTorso = (v, isPoint) => intoPart(torso, intoCamera(camera, v, isPoint), isPoint)
     const aim = {
-        point: state.aimPoint && toTorso(state.aimPoint, true),
+        // The render follows live positions, including the frame of a lethal shot.
+        point: state.aimTarget ? toTorso(targetPosition(state.aimTarget), true) : state.aimPoint && toTorso(state.aimPoint, true),
         dir: toTorso(state.aimDir, false),
         up: toTorso([0, 1, 0], false),
+        muzzleHeight: mario_gun_dls[currentWeapon().id].muzzle[1],
     }
     const foregrip = currentWeapon().foregrip
     const arms = foregrip ? solveTwoHanded(aim, foregrip) : { right: solveGunArm(aim).rotations, left: null }

@@ -47,7 +47,7 @@ export const pullTrigger = (ammo, weapon, pressed, held) => {
 }
 
 // Who a shot hits. With a lock (CPlayerPed::m_pTargetedObject) the bullet goes
-// to the target; otherwise it flies along Mario's facing and hits the nearest
+// to the target; otherwise it flies along the aim direction and hits the nearest
 // enemy inside the weapon's spread. Shotgun pellets hit everything in the cone.
 export const shotHits = (shooter, aimYaw, lock, candidates, weapon, losBlocked) => {
     const inCone = target => !targetHasToBeBroken(shooter, target, weapon)
