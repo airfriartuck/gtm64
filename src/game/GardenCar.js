@@ -87,7 +87,7 @@ export const updateGardenCar = (m, idleAction, canEnter) => {
         return true
     }
     if (!car.driving) {
-        showHelp(near ? 'E / B to enter the car · Arrow keys / stick to drive' : 'Red car parked near the starting lawn · Walk up and press E / B')
+        showHelp(near ? 'E / B to enter the car · Arrow keys / stick to drive' : 'Mustang parked near the starting lawn · Walk up and press E / B')
         return false
     }
     advanceCar(car, input, gLinker.SurfaceCollision, unsafeTypes)

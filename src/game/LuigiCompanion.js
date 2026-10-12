@@ -14,6 +14,10 @@ const flatDistance = (a, b) => Math.hypot(a[0] - b[0], a[2] - b[2])
 const wrap = angle => ((angle + 32768) % 65536 + 65536) % 65536 - 32768
 const yawTo = (from, to) => Math.atan2(to[0] - from[0], to[2] - from[2]) * 32768 / Math.PI
 
+// The Mustang's front passenger seat in car space (+Z is the nose, +X the
+// driver's side), for Luigi's origin in his seated pose.
+export const PASSENGER_SEAT = [-38, 25, 0]
+
 const FOLLOW_GAP = 180       // how far behind Mario's trail Luigi stays
 const LEASH = 900            // wandering never strays further than this from Mario
 const CATCH_UP = 1800        // beyond this, Luigi reappears beside Mario
@@ -130,11 +134,12 @@ export const updateLuigi = (state, marioPos, car, world = null) => {
         // Local passenger seat, rotated with the car's yaw, pitch and bank.
         const pitch = (car.pitch || 0) * Math.PI / 32768
         const roll = (car.roll || 0) * Math.PI / 32768
-        const x = 48 * Math.cos(roll) - 125 * Math.sin(roll)
-        const y = 48 * Math.sin(roll) + 125 * Math.cos(roll)
-        const z = -25 * Math.cos(pitch) + y * Math.sin(pitch)
+        const [sx, sy, sz] = PASSENGER_SEAT
+        const x = sx * Math.cos(roll) - sy * Math.sin(roll)
+        const y = sx * Math.sin(roll) + sy * Math.cos(roll)
+        const z = sz * Math.cos(pitch) + y * Math.sin(pitch)
         state.pos = [car.x + x * Math.cos(yaw) + z * Math.sin(yaw),
-            car.y + y * Math.cos(pitch) + 25 * Math.sin(pitch),
+            car.y + y * Math.cos(pitch) - sz * Math.sin(pitch),
             car.z - x * Math.sin(yaw) + z * Math.cos(yaw)]
         state.yaw = car.yaw
         state.path = []

@@ -77,7 +77,8 @@ Controls** to switch to this layout.
 
 ## Garden car
 
-A red car is parked on the starting lawn in the Castle Grounds (Main Map).
+A 1965 Ford Mustang convertible is parked on the starting lawn in the Castle
+Grounds (Main Map).
 Walk up to it and press **E** or the game's **B** button to enter or exit.
 Use **Up / Down** to accelerate forward or reverse and **Left / Right** to steer.
 The gamepad's left stick works too. Hold the jump or crouch button to brake
@@ -87,6 +88,18 @@ The car pitches and banks with the terrain, including hill entrances and crests.
 It stops at walls, deep water, extreme slopes and abrupt drops. Exit into an open
 space beside it; if there isn't room, move to another patch of grass first.
 It stays parked when you exit and resets when the Castle Grounds reloads.
+
+The car model is
+["1965 Ford Mustang Convertible"](https://sketchfab.com/3d-models/1965-ford-mustang-convertible-05f2a294087541ab82f681136d134344)
+by [Kristian LaGrange](https://sketchfab.com/kristian123), licensed under
+[CC BY 4.0](http://creativecommons.org/licenses/by/4.0/). It was simplified from
+about 112,000 to 4,200 triangles and its textures were baked into vertex colours.
+The original is kept in `src/actors/garden_car/source/`; to rebuild the game
+model after changing it, run:
+
+```bash
+node otherTools/convertCarGlb.mjs src/actors/garden_car/source/1965_ford_mustang_convertible.glb src/actors/garden_car/model.inc.js
+```
 
 Luigi joins Mario on the starting lawn, wearing a green outfit and L cap.
 He follows Mario's path around the Castle Grounds, easing between walking and

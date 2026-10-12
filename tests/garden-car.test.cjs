@@ -573,3 +573,37 @@ test('Luigi explores the real castle grounds without leaving safe ground', () =>
     }
     assert.ok(moved > 3000, `explores the lawn (${Math.round(moved)} units)`)
 })
+
+test('the Mustang model is baked within budget, upright, nose to +Z, with glass on the translucent layer', () => {
+    const r = runtime(true)
+    const gbi = r.load('include/gbi.js')
+    const model = r.load('actors/garden_car/model.inc.js')
+    const vertices = list => list.filter(command => command.words.w0 === gbi.G_VTX)
+        .flatMap(command => command.words.w1.vertices || [])
+    const triangles = list => list.filter(command => command.words.w0 === gbi.G_TRI1).length
+    const body = vertices(model.garden_car_dl), glass = vertices(model.garden_car_glass_dl)
+    assert.ok(body.length > 0 && glass.length > 0)
+    assert.ok(triangles(model.garden_car_dl) + triangles(model.garden_car_glass_dl) <= 5000, 'cheap enough to draw every frame')
+    const axis = (list, i) => list.map(v => v[0][i])  // [position, flag, uv, rgba]
+    const all = [...body, ...glass]
+    // Decoded geometry matches the size the converter reported.
+    assert.ok(Math.abs(Math.max(...axis(all, 2)) - Math.min(...axis(all, 2)) - model.CAR_MODEL_SIZE.length) <= 2)
+    assert.ok(Math.abs(Math.max(...axis(all, 0)) - Math.min(...axis(all, 0)) - model.CAR_MODEL_SIZE.width) <= 2)
+    assert.equal(Math.min(...axis(all, 1)), 0, 'wheels on the ground')
+    // The windscreen is ahead of the middle of the car.
+    const windscreen = glass.filter(v => v[0][1] > 80)
+    assert.ok(windscreen.reduce((s, v) => s + v[0][2], 0) / windscreen.length > 0, 'nose faces +Z')
+    assert.ok(glass.every(v => v[3][3] < 255), 'glass is see-through')
+    const geo = r.load('actors/garden_car/geo.inc.js').garden_car_geo()
+    const layers = geo.filter(node => node.args && node.args[1] === model.garden_car_glass_dl).map(node => node.args[0])
+    assert.deepEqual([...layers], [r.load("engine/GeoLayout.js").LAYER_TRANSPARENT])
+})
+
+test('Luigi sits in the passenger seat, on the far side from the driver', () => {
+    const { updateLuigi, PASSENGER_SEAT } = runtime().load('game/LuigiCompanion.js')
+    const luigi = { pos: [0, 0, 0], path: [], yaw: 0 }
+    updateLuigi(luigi, [0, 0, 0], { ...state(), x: 1000, y: 260, z: 2000, yaw: 0, driving: true })
+    // +X is the driver's (left) side of a car facing +Z.
+    assert.ok(PASSENGER_SEAT[0] < 0)
+    assert.deepEqual([...luigi.pos].map(Math.round), [1000 + PASSENGER_SEAT[0], 260 + PASSENGER_SEAT[1], 2000 + PASSENGER_SEAT[2]])
+})
