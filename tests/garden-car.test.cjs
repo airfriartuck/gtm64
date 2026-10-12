@@ -231,7 +231,7 @@ test('Luigi behavior switches animations as he hops in and out and ignores an un
     r.objects.gCurrentObject = carObject
     const car = r.load('game/GardenCar.js')
     car.bhv_garden_car_loop()
-    const luigi = { rawData: [], gfx: { animInfo: {} } }
+    const luigi = { rawData: [], activeFlags: 1, gfx: { animInfo: {} } }
     luigi.rawData[c.oPosX] = luigi.rawData[c.oPosZ] = luigi.rawData[c.oFaceAngleYaw] = 0
     luigi.rawData[c.oPosY] = 260
     const m = marioState([0,260,300])

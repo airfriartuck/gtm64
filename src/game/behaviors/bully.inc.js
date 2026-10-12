@@ -1,6 +1,6 @@
 import { play_puzzle_jingle } from "../../audio/external"
 import { GRAPH_RENDER_INVISIBLE } from "../../engine/graph_node"
-import { MODEL_BULLY, MODEL_YELLOW_COIN } from "../../include/model_ids"
+import { MODEL_BULLY, MODEL_NONE, MODEL_YELLOW_COIN } from "../../include/model_ids"
 import { ACTIVE_FLAG_DEACTIVATED, BULLY_ACT_ACTIVATE_AND_FALL, BULLY_ACT_BACK_UP, BULLY_ACT_CHASE_MARIO, BULLY_ACT_DEATH_PLANE_DEATH, BULLY_ACT_INACTIVE, BULLY_ACT_KNOCKBACK, BULLY_ACT_LAVA_DEATH, BULLY_ACT_PATROL, BULLY_BP_SIZE_BIG, BULLY_BP_SIZE_SMALL, BULLY_STYPE_CHILL, BULLY_STYPE_MINION, oAction, oBehParams2ndByte, OBJ_FLAG_SET_FACE_YAW_TO_MOVE_YAW, oBullyKBTimerAndMinionKOCounter, oBullyMarioCollisionAngle, oBullyPrevX, oBullyPrevY, oBullyPrevZ, oBullySubtype, oBuoyancy, oFaceAngleYaw, oFlags, oForwardVel, oFriction, oGravity, oHomeX, oHomeY, oHomeZ, oInteractStatus, oMoveAngleYaw, oPosX, oPosY, oPosZ, oTimer, oVelY } from "../../include/object_constants"
 import { SOUND_GENERAL_COIN_SPURT, SOUND_OBJ2_BULLY_ATTACKED, SOUND_OBJ2_LARGE_BULLY_ATTACKED, SOUND_OBJ_BULLY_WALK, SOUND_OBJ_BULLY_WALKING, SOUND_OBJ_THWOMP } from "../../include/sounds"
 import { random_float } from "../../utils"

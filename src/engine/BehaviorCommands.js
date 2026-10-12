@@ -38,6 +38,7 @@ class BehaviorCommands {
 
     cur_obj_update() {
         const gCurrentObject = gLinker.ObjectListProcessor.gCurrentObject
+        if (gLinker.MarioWeapon && gLinker.MarioWeapon.updateWeaponDefeat(gCurrentObject)) return
         const gMarioObject = gLinker.ObjectListProcessor.gMarioObject
 
         let objFlags = gCurrentObject.rawData[oFlags]

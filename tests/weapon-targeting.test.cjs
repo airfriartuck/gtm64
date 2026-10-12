@@ -40,19 +40,41 @@ const flat = {
     f32_find_wall_collision: () => 0,
 }
 
-test('lock-on prefers enemies in front of the camera and weighs distance by its fourth root', () => {
+test('lock-on chooses the nearest enemy ahead even when a farther enemy is centred', () => {
     const t = targeting()
     const ahead = enemy(0, 1500), behind = enemy(0, -300)
     assert.equal(t.findLockOnTarget(shooter, [behind, ahead], pistol, 0, clear), ahead)
-    // A target more than 140° off the aim direction is never chosen.
     assert.equal(t.findLockOnTarget(shooter, [behind], pistol, 0, clear), null)
-    // GTA's falloff: a near enemy 30° to the side beats a far one dead ahead.
-    const near = enemy(Math.sin(Math.PI / 6) * 300, Math.cos(Math.PI / 6) * 300)
-    const far = enemy(0, 3400)
+    // The nearest enemy wins even near the edge of the forward aim cone.
+    const angle = 70 * Math.PI / 180
+    const near = enemy(Math.sin(angle) * 300, Math.cos(angle) * 300)
+    const far = enemy(0, 900)
     assert.equal(t.findLockOnTarget(shooter, [far, near], pistol, 0, clear), near)
-    // ...but a flagged priority target (bThisPedIsATargetPriority) wins outright.
-    far.priority = 1
-    assert.equal(t.findLockOnTarget(shooter, [far, near], pistol, 0, clear), far)
+    assert.equal(t.findLockOnTarget(shooter, [near, far], pistol, 0, clear), near, 'object-list order does not change nearest selection')
+    assert.equal(t.findLockOnTarget(shooter, [near, enemy(0, 200)], pistol, 0, clear).pos[2], 200)
+})
+
+test('lock-on measures 3D distance and skips close enemies outside the aim direction', () => {
+    const t = targeting()
+    const elevated = enemy(0, 300, { pos: [0, 400, 300] })
+    const farther = enemy(0, 450)
+    assert.equal(t.findLockOnTarget(shooter, [farther, elevated], pistol, 0, clear), elevated)
+    const ground = enemy(0, 350)
+    assert.equal(t.findLockOnTarget(shooter, [elevated, ground], pistol, 0, clear), ground,
+        'height contributes to distance rather than making a horizontally close enemy appear nearest')
+
+    const sideBehind = enemy(100, -20)
+    assert.equal(t.findLockOnTarget(shooter, [sideBehind, ground], pistol, 0, clear), ground,
+        'near enemies behind Mario do not steal the initial lock')
+    assert.equal(t.findLockOnTarget(shooter, [ground, sideBehind], pistol, 0x4000, clear), sideBehind,
+        'rotating the aim direction makes the nearest enemy eligible')
+    assert.equal(t.findLockOnTarget(shooter, [enemy(0, 200), enemy(0, -400)], pistol, 0x8000, clear).pos[2], -400,
+        'aiming backward acquires an enemy along that heading')
+
+    const shiftedShooter = { pos: [600, 100, -500] }
+    const nearShifted = enemy(800, -400), pastMario = enemy(600, 1000)
+    assert.equal(t.findLockOnTarget(shiftedShooter, [pastMario, nearShifted], pistol, 0, clear), nearShifted,
+        'distance is measured from Mario rather than the camera or world origin')
 })
 
 test('targets out of range, invisible, unreachable or behind walls are skipped', () => {
@@ -64,6 +86,8 @@ test('targets out of range, invisible, unreachable or behind walls are skipped',
     assert.equal(t.targetHasToBeBroken(shooter, overhead, pistol), true)
     const hidden = enemy(0, 500), visible = enemy(400, 1200)
     assert.equal(t.findLockOnTarget(shooter, [hidden, visible], pistol, 0, (s, target) => target === hidden), visible)
+    assert.equal(t.findLockOnTarget(shooter, [overhead, enemy(0, 1500)], pistol, 0, clear).pos[2], 1500,
+        'an unreachable nearby enemy does not prevent acquisition of a valid one')
 })
 
 test('next-target switching steps to the nearest enemy on the requested side', () => {
@@ -75,6 +99,14 @@ test('next-target switching steps to the nearest enemy on the requested side', (
     assert.equal(t.findNextLockOnTarget(shooter, current, all, pistol, true, clear), left1)
     assert.equal(t.findNextLockOnTarget(shooter, current, all, pistol, false, clear), right1)
     assert.equal(t.findNextLockOnTarget(shooter, right1, [right1, current], pistol, false, clear), null)
+    const hiddenLeft = enemy(100, 1000)
+    assert.equal(t.findNextLockOnTarget(shooter, current, [current, hiddenLeft, left1], pistol, true,
+        (s, target) => target === hiddenLeft), left1, 'switching skips occluded neighbours')
+    const alignedNear = enemy(150, 500), alignedFar = enemy(600, 2000)
+    assert.equal(t.findNextLockOnTarget(shooter, current, [current, alignedFar, alignedNear], pistol, true, clear), alignedNear,
+        'equal-angle neighbours select the nearest enemy')
+    assert.equal(t.findNextLockOnTarget(shooter, current, [current, enemy(100, -200)], pistol, true, clear), null,
+        'switching does not turn backward to an enemy behind the current aim')
     assert.ok(t.angleOffAim([0, 0, 0], [100, 0, 100], 0) > 0, 'left is a positive angle')
 })
 
@@ -153,11 +185,15 @@ function weaponRuntime() {
     Object.assign(r.linker, {
         ObjectListProcessor: { gObjectLists: lists },
         LevelUpdate: { gMarioState: mario },
+        GeoRenderer: { gCurGraphNodeObject: { object: mario.marioObj }, gCurGraphNodeCamera: null },
         Camera: { gLakituState: { pos: [0, 200, -800], focus: [0, 100, 0] }, sFOVState: { fov: 45 } },
         SurfaceCollision: flat,
-        behaviors: { bhvBobomb: ['bobomb'] },
+        behaviors: { bhvBobomb: ['bobomb'], bhvLuigiCompanion: ['luigi'] },
     })
-    return { weapon: r.load('game/MarioWeapon.js'), lists, add, object, mario, r, sounds }
+    const luigi = (x, z, extra = {}) => add(8, object(x, z, 0, {
+        behavior: r.linker.behaviors.bhvLuigiCompanion, ...extra,
+    }))
+    return { weapon: r.load('game/MarioWeapon.js'), lists, add, object, luigi, mario, r, sounds }
 }
 
 test('only active, attackable enemies are collected as targets', () => {
@@ -223,6 +259,169 @@ test('the lock holds, switches with C-left / C-right, and the gun only shows whi
 
     mario.action = ACT_IDLE
     assert.equal(weapon.geo_mario_gun(1, node), null)
+})
+
+test('new aim locks choose the nearest enemy while held aim keeps a valid target stable', () => {
+    const { weapon, add, object, mario, r } = weaponRuntime()
+    const angle = 70 * Math.PI / 180
+    const near = add(5, object(Math.sin(angle) * 300, Math.cos(angle) * 300, 1 << 15))
+    const far = add(5, object(0, 900, 1 << 15))
+    add(5, object(0, -120, 1 << 15))
+    mario.action = ACT_GUN_AIM
+    r.linker.Camera.gLakituState.focus = [0, 100, -1600]
+    weapon.updateWeaponAim(mario, {})
+    assert.equal(weapon.weaponState.target.object, near, 'initial lock picks the nearest enemy ahead of Mario despite the camera facing backward')
+
+    far.rawData[8] = 150
+    weapon.updateWeaponAim(mario, {})
+    assert.equal(weapon.weaponState.target.object, near, 'a closer enemy does not steal a valid held lock')
+    near.rawData[6] = 0
+    near.rawData[8] = -300
+    weapon.updateWeaponAim(mario, {})
+    assert.equal(weapon.weaponState.target.object, near, 'the held lock keeps tracking an enemy that moves behind Mario')
+    weapon.stopWeaponAim()
+    weapon.updateWeaponAim(mario, {})
+    assert.equal(weapon.weaponState.target.object, far, 'release and re-aim select the newly nearest enemy')
+
+    near.rawData[6] = Math.sin(angle) * 300
+    near.rawData[8] = Math.cos(angle) * 300
+    far.rawData[8] = 4000
+    weapon.updateWeaponAim(mario, {})
+    assert.equal(weapon.weaponState.target.object, near, 'leaving weapon range reacquires the nearest valid enemy')
+    near.gfx.flags = 17
+    weapon.updateWeaponAim(mario, {})
+    assert.equal(weapon.weaponState.target, null, 'invisible targets lose their lock')
+})
+
+test('initial acquisition follows Mario heading when the camera points elsewhere', () => {
+    for (const yaw of [0x4000, -0x4000, 0x8000]) {
+        const { weapon, add, object, mario, r } = weaponRuntime()
+        const radians = yaw * Math.PI / 0x8000
+        const ahead = add(5, object(Math.sin(radians) * 300, Math.cos(radians) * 300, 1 << 15))
+        add(5, object(-Math.sin(radians) * 120, -Math.cos(radians) * 120, 1 << 15))
+        mario.action = ACT_GUN_AIM
+        mario.faceAngle[1] = yaw
+        r.linker.Camera.gLakituState.focus = [
+            r.linker.Camera.gLakituState.pos[0] - Math.sin(radians) * 1000,
+            100,
+            r.linker.Camera.gLakituState.pos[2] - Math.cos(radians) * 1000,
+        ]
+        weapon.updateWeaponAim(mario, {})
+        assert.equal(weapon.weaponState.target.object, ahead, `Mario heading ${yaw} determines the initial lock`)
+
+        mario.faceAngle[1] = -yaw
+        weapon.updateWeaponAim(mario, {})
+        assert.equal(weapon.weaponState.target.object, ahead, 'an existing valid lock stays stable when headings change')
+    }
+})
+
+test('an occluded held lock gives way to the nearest enemy with a clear line of sight', () => {
+    const { weapon, add, object, mario, r } = weaponRuntime()
+    const near = add(5, object(0, 500, 1 << 15))
+    const farther = add(5, object(400, 1500, 1 << 15))
+    mario.action = ACT_GUN_AIM
+    weapon.updateWeaponAim(mario, {})
+    assert.equal(weapon.weaponState.target.object, near)
+
+    r.linker.SurfaceCollision = { ...flat,
+        f32_find_wall_collision: pos => Math.abs(pos.z - 250) <= 10 && Math.abs(pos.x) < 50 ? 1 : 0,
+    }
+    weapon.updateWeaponAim(mario, {})
+    assert.equal(weapon.weaponState.target.object, farther, 'a wall invalidates the old lock before reacquisition')
+})
+
+test('Luigi supplies a companion fallback when no eligible enemies are available', () => {
+    const { weapon, add, object, luigi, mario, r, lists } = weaponRuntime()
+    const companion = luigi(200, 700)
+    luigi(0, 400, { activeFlags: 0 })
+    add(8, object(0, 300, 0, { behavior: ['friendly-object'] }))
+    assert.equal(weapon.collectEnemies(lists).length, 0, 'the companion is kept separate from enemies')
+    const companions = weapon.collectCompanions(lists)
+    assert.equal(companions.length, 1)
+    assert.equal(companions[0].object, companion)
+    assert.equal(companions[0].companion, true)
+    assert.equal(companion.hitboxHeight, 100, 'Luigi starts with the generic allocated-object hitbox')
+    assert.deepEqual([...companions[0].pos], [200, 80, 700], 'Luigi uses his torso height despite the generic hitbox')
+    assert.equal(companions[0].top, 160)
+
+    mario.action = ACT_GUN_AIM
+    r.linker.Camera.gLakituState.focus = [0, 100, -1600]
+    const yaw = weapon.updateWeaponAim(mario, {})
+    assert.equal(weapon.weaponState.target.object, companion)
+    assert.equal(weapon.weaponState.target.companion, true)
+    assert.equal(weapon.weaponState.aimTarget, companion)
+    assert.ok(yaw > 0, 'Mario faces Luigi while the camera points elsewhere')
+})
+
+test('eligible enemies take precedence over Luigi without disrupting held enemy locks', () => {
+    const { weapon, add, object, luigi, mario } = weaponRuntime()
+    const companion = luigi(100, 300)
+    const enemyObject = add(5, object(0, 4000, 1 << 15))
+    mario.action = ACT_GUN_AIM
+    weapon.updateWeaponAim(mario, {})
+    assert.equal(weapon.weaponState.target.object, companion, 'out-of-range enemies permit the fallback')
+
+    enemyObject.rawData[8] = 1200
+    weapon.updateWeaponAim(mario, {})
+    assert.equal(weapon.weaponState.target.object, enemyObject, 'an eligible enemy replaces a held companion fallback')
+    assert.equal(weapon.weaponState.target.companion, false)
+    companion.rawData[8] = 150
+    weapon.updateWeaponAim(mario, {})
+    assert.equal(weapon.weaponState.target.object, enemyObject, 'a closer Luigi does not steal a held enemy lock')
+
+    weapon.stopWeaponAim()
+    weapon.updateWeaponAim(mario, {})
+    assert.equal(weapon.weaponState.target.object, enemyObject, 'fresh acquisition also prioritizes enemies over a nearer Luigi')
+    enemyObject.activeFlags = 0
+    weapon.updateWeaponAim(mario, {})
+    assert.equal(weapon.weaponState.target.object, companion, 'losing the last eligible enemy restores the fallback')
+})
+
+test('Luigi fallback requires visibility, Mario-facing direction, range, reach and clear sight', () => {
+    const cases = [
+        { name: 'behind Mario', position: [0, 0, -300] },
+        { name: 'out of range', position: [0, 0, 4000] },
+        { name: 'unreachable overhead', position: [0, 1000, 100] },
+        { name: 'invisible', position: [0, 0, 500], extra: { gfx: { flags: 17 } } },
+        { name: 'inactive', position: [0, 0, 500], extra: { activeFlags: 0 } },
+        { name: 'occluded', position: [0, 0, 500], blocked: true },
+    ]
+    for (const scenario of cases) {
+        const { weapon, luigi, mario, r } = weaponRuntime()
+        const companion = luigi(scenario.position[0], scenario.position[2], scenario.extra)
+        companion.rawData[7] = scenario.position[1]
+        if (scenario.blocked) r.linker.SurfaceCollision = { ...flat, f32_find_wall_collision: () => 1 }
+        mario.action = ACT_GUN_AIM
+        weapon.updateWeaponAim(mario, {})
+        assert.equal(weapon.weaponState.target, null, `${scenario.name} does not produce a companion lock`)
+        assert.equal(weapon.weaponState.aimTarget, null)
+    }
+})
+
+test('pistol and shotgun fire damage and defeat a Luigi fallback', () => {
+    for (const index of [0, 2]) {
+        const { weapon, luigi, mario } = weaponRuntime()
+        const companion = luigi(0, 500)
+        mario.action = ACT_GUN_AIM
+        weapon.weaponState.index = index
+        weapon.updateWeaponAim(mario, { buttonPressedB: true, buttonDownB: true })
+        assert.ok(companion.weaponHealth > 0 && companion.weaponHealth < 100,
+            `${weapon.currentWeapon().id} damages Luigi through the normal firing path`)
+        assert.equal(weapon.weaponState.target.companion, true)
+
+        const ammo = weapon.weaponState.ammo[index]
+        for (let shot = 0; shot < 4 && !companion.weaponDefeated; shot++) {
+            while (ammo.cooldown > 0 || ammo.reload > 0) weapon.updateWeaponAim(mario, {})
+            weapon.updateWeaponAim(mario, { buttonPressedB: true, buttonDownB: true })
+        }
+        assert.equal(companion.weaponHealth, 0)
+        assert.equal(companion.weaponDefeated, true, `${weapon.currentWeapon().id} can finish Luigi`)
+        assert.equal(weapon.weaponState.target, null, 'the killing shot releases the companion lock')
+        assert.equal(weapon.weaponState.aimTarget, companion, 'the killing muzzle flash stays aimed at Luigi')
+        weapon.updateWeaponAim(mario, {})
+        assert.equal(weapon.weaponState.target, null, 'a defeated companion is not acquired again')
+        assert.equal(weapon.weaponState.aimTarget, null)
+    }
 })
 
 const weapons = () => runtime().load('game/Weapons.js')
@@ -311,13 +510,11 @@ test('enemies take GTA damage until defeated; Bob-ombs explode and heavies last 
     assert.equal(weapon.damageEnemy(bully, 125), false)
     assert.equal(weapon.damageEnemy(bully, 125), true)
     assert.equal(weapon.collectEnemies(lists).length, 0, 'defeated enemies are no longer targets')
-    // The Goomba and Bob-omb despawn; the Bully survives its knockback and returns.
+    // A defeated enemy remains defeated even if its original behavior keeps it active.
     goomba.activeFlags = bobomb.activeFlags = 0
-    for (let i = 0; i < 88; i++) assert.equal(weapon.collectEnemies(lists).length, 0)
-    const back = weapon.collectEnemies(lists)
-    assert.equal(back.length, 1)
-    assert.equal(back[0].object, bully)
-    assert.equal(back[0].health, 1)
+    for (let i = 0; i < 180; i++) assert.equal(weapon.collectEnemies(lists).length, 0)
+    assert.equal(bully.weaponHealth, 0)
+    assert.equal(bully.weaponDefeated, true)
 })
 
 test('B fires at the lock, tints the marker, and the lock moves on after a kill', () => {
@@ -464,6 +661,38 @@ const aimScene = (math, position, rotation, scale, camera) => {
     return { shoulder, view }
 }
 
+test('Luigi shared hand geometry cannot draw Mario gun or capture its queued muzzle', () => {
+    const { weapon, luigi, mario, r } = weaponRuntime()
+    const math = r.load('engine/math_util.js')
+    const companion = luigi(200, 1100)
+    mario.action = ACT_GUN_AIM
+    weapon.updateWeaponAim(mario, { buttonPressedB: true, buttonDownB: true })
+    assert.equal(weapon.weaponEffects.shots.length, 1)
+    const shot = weapon.weaponEffects.shots[0]
+    assert.equal(shot.start, null, 'the firing update waits for the rendered hand muzzle')
+
+    const position = [-240, 160, 380], rotation = [2100, -5000, 1300], scale = 1.1
+    const camera = { pos: [900, 800, -1500], focus: [0, 100, 500], roll: 0.12 }
+    const { shoulder: hand, view } = aimScene(math, position, rotation, scale, camera)
+    r.linker.GeoRenderer = { gCurGraphNodeObject: { object: companion }, gCurGraphNodeCamera: { matrixPtr: view } }
+    assert.equal(weapon.geo_mario_gun(1, { flags: 0 }, hand), null, 'Luigi never draws the gun from his shared Mario graph')
+    assert.equal(shot.start, null, 'Luigi hand cannot supply Mario muzzle')
+    assert.equal(weapon.weaponEffects.sparks.length, 0, 'Luigi hand cannot resolve the pending shot effects')
+
+    r.linker.GeoRenderer.gCurGraphNodeObject = { object: mario.marioObj }
+    assert.equal(weapon.geo_mario_gun(0, { flags: 0 }, hand), null, 'layout creation never draws or captures the gun')
+    assert.equal(shot.start, null)
+    assert.equal(weapon.geo_mario_gun(1, { flags: 0 }, hand)[1], 'flash', 'Mario renders the firing gun')
+
+    const worldHand = math.Mat4()
+    math.mtxf_rotate_xyz_and_translate(worldHand, position, rotation)
+    math.mtxf_scale_vec3f(worldHand, worldHand, [scale, scale, scale])
+    const expectedMuzzle = transformPoint(worldHand, [240, 61, 0])
+    assert.ok(Math.hypot(...shot.start.map((value, axis) => value - expectedMuzzle[axis])) < 1e-6,
+        'the queued shot starts at Mario rendered muzzle in world space')
+    assert.ok(weapon.weaponEffects.sparks.length > 0, 'Mario hand resolves the hit effects')
+})
+
 test('every gun barrel points through the target in idle and strafing animations', () => {
     const r = runtime()
     const math = r.load('engine/math_util.js')
@@ -591,6 +820,35 @@ test('the shoulder geo tracks current enemy position and Mario movement between 
     const worldForward = forwardInWorld(shoulder, view)
     assert.ok(Math.abs(worldForward[1]) < 1e-10)
     assert.ok(Math.abs(Math.atan2(worldForward[0], worldForward[2]) - expectedYaw) < 1e-10)
+})
+
+test('switching to Luigi fallback keeps the barrel on his live torso position', () => {
+    const { weapon, add, object, luigi, mario, r } = weaponRuntime()
+    const math = r.load('engine/math_util.js')
+    const companion = luigi(240, 650)
+    const enemyObject = add(5, object(0, 1400, 1 << 15))
+    mario.action = ACT_GUN_AIM
+    weapon.updateWeaponAim(mario, {})
+    assert.equal(weapon.weaponState.target.object, enemyObject)
+
+    enemyObject.activeFlags = 0
+    weapon.updateWeaponAim(mario, {})
+    assert.equal(weapon.weaponState.target.object, companion)
+    const cachedPosition = [...weapon.weaponState.target.pos]
+    const camera = { pos: [900, 700, -1500], focus: [100, 120, 500], roll: 0.2 }
+    for (const position of [[240, 0, 650], [-500, 200, 1100]]) {
+        companion.rawData[6] = position[0]
+        companion.rawData[7] = position[1]
+        companion.rawData[8] = position[2]
+        const { shoulder, view } = aimScene(math, [60, 130, 20], [1700, -6000, 1300], 1, camera)
+        r.linker.GeoRenderer = { gCurGraphNodeObject: { object: mario.marioObj }, gCurGraphNodeCamera: { matrixPtr: view } }
+        weapon.geo_mario_aim_arm(1, {}, shoulder)
+        const wrist = math.Mat4(), hand = math.Mat4()
+        math.mtxf_translate(wrist, [125, 0, 0])
+        math.mtxf_mul(hand, wrist, shoulder)
+        assertBarrelHits(hand, [240, 61], view, [position[0], position[1] + 80, position[2]], 'Luigi fallback')
+        assert.deepEqual([...weapon.weaponState.target.pos], cachedPosition, 'rendering follows Luigi despite the cached acquisition snapshot')
+    }
 })
 
 test('a killing shot keeps the muzzle flash pointed at its victim until the next aim update', () => {
