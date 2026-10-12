@@ -9,6 +9,7 @@ import { ACT_GUN_AIM, ACT_GROUP_MASK, ACT_GROUP_STATIONARY, ACT_GROUP_MOVING, AC
     ACT_FLAG_BUTT_OR_STOMACH_SLIDE, INPUT_OFF_FLOOR, INPUT_B_PRESSED, ACT_JUMP, ACT_DOUBLE_JUMP, ACT_FREEFALL,
     ACT_LONG_JUMP, ACT_WALL_KICK_AIR, MARIO_ANIM_FIRST_PUNCH } from "./Mario"
 import { pinParts, AIR_AIM_PARTS, AIM_FRAME } from "./MarioAimAnimation"
+import { rigArms, rigForValues, writeRotation, writeAnimated, solveGunArm, LEFT_ARM, RIGHT_ARM } from "./MarioAimRig"
 import { int16 } from "../utils"
 import { play_gun_sound } from "../audio/external"
 import * as Targeting from "./WeaponTargeting"
@@ -22,7 +23,8 @@ const ENEMY_INTERACTIONS = INTERACT_BOUNCE_TOP | INTERACT_BOUNCE_TOP2 | INTERACT
 const ENEMY_BEHAVIORS = ['bhvBobomb', 'bhvChuckya']
 const ENEMY_LISTS = [2, 4, 5] // OBJ_LIST_DESTRUCTIVE, OBJ_LIST_GENACTOR, OBJ_LIST_PUSHABLE
 
-export const weaponState = { index: 0, ammo: newAmmo(), target: null, flash: 0, hudFrames: 0, airAim: false, airYaw: 0 }
+export const weaponState = { index: 0, ammo: newAmmo(), target: null, flash: 0, hudFrames: 0, airAim: false, airYaw: 0,
+    aimPoint: null, aimDir: [0, 0, 1] }
 export const currentWeapon = () => WEAPONS[weaponState.index]
 
 // Ordinary jumps and falls keep their SM64 physics while Mario aims. Flips
@@ -132,6 +134,9 @@ export const updateWeaponAim = (m, input = window.playerInput, facing = m.faceAn
     // Target switching owns the C-left / C-right press, not the camera.
     input.buttonPressedCl = input.buttonPressedCr = false
     state.target = target
+    // Where the arms point the gun: at the lock, else straight ahead.
+    state.aimPoint = target ? [...target.pos] : null
+    state.aimDir = [Math.sin(facing / 0x8000 * Math.PI), 0, Math.cos(facing / 0x8000 * Math.PI)]
 
     if (state.flash > 0) state.flash--
     const ammo = state.ammo[state.index]
@@ -172,7 +177,7 @@ const pinAirPose = m => {
     if (!info.curAnim || airPoseSources.has(info.curAnim)) return
     let pose = airPoses.get(info.curAnim)
     if (!pose) {
-        pose = pinParts(info.curAnim, m.animation.animList[MARIO_ANIM_FIRST_PUNCH], AIM_FRAME, AIR_AIM_PARTS)
+        pose = rigArms(pinParts(info.curAnim, m.animation.animList[MARIO_ANIM_FIRST_PUNCH], AIM_FRAME, AIR_AIM_PARTS))
         airPoses.set(info.curAnim, pose)
         airPoseSources.set(pose, info.curAnim)
     }
@@ -207,6 +212,34 @@ export const updateAirAim = (m, setAction, input = window.playerInput) => {
     weaponState.airYaw = int16(weaponState.airYaw + Math.max(-0x1800, Math.min(0x1800, turn)))
     m.marioObj.gfx.angle[1] = weaponState.airYaw
     pinAirPose(m)
+}
+
+// Express a camera-space point or direction in the space of a rendered part.
+const intoPart = (part, v, isPoint) => {
+    const p = isPoint ? [v[0] - part[3][0], v[1] - part[3][1], v[2] - part[3][2]] : v
+    return [0, 1, 2].map(i => (p[0] * part[i][0] + p[1] * part[i][1] + p[2] * part[i][2])
+        / (part[i][0] ** 2 + part[i][1] ** 2 + part[i][2] ** 2))
+}
+const intoCamera = (camera, v, isPoint) => [0, 1, 2].map(j =>
+    v[0] * camera[0][j] + v[1] * camera[1][j] + v[2] * camera[2][j] + (isPoint ? camera[3][j] : 0))
+
+// Mario's torso geo calls this before drawing his arms. When he's playing an
+// aiming animation, solve the gun arm against the torso as it's being drawn.
+export const geo_mario_aim_arms = (callContext, node, torso) => {
+    const renderer = gLinker.GeoRenderer
+    const rig = renderer && rigForValues(renderer.gCurAnimData)
+    const camera = rig && renderer.gCurGraphNodeCamera && renderer.gCurGraphNodeCamera.matrixPtr
+    if (!camera || !torso) return null
+    const state = weaponState
+    const toTorso = (v, isPoint) => intoPart(torso, intoCamera(camera, v, isPoint), isPoint)
+    const { rotations } = solveGunArm({
+        point: state.aimPoint && toTorso(state.aimPoint, true),
+        dir: toTorso(state.aimDir, false),
+        up: toTorso([0, 1, 0], false),
+    })
+    RIGHT_ARM.forEach((part, i) => writeRotation(rig, part, rotations[i]))
+    LEFT_ARM.forEach(part => writeAnimated(rig, part, renderer.gCurrAnimFrame))
+    return null
 }
 
 // Mario's right-hand geo calls this; the gun only appears while aiming.
@@ -287,4 +320,4 @@ export const updateWeaponHud = (input = window.playerInput) => {
     updateWeaponPanel(canvas)
 }
 
-gLinker.MarioWeapon = { geo_mario_gun, weaponState }
+gLinker.MarioWeapon = { geo_mario_gun, geo_mario_aim_arms, weaponState }

@@ -13,6 +13,7 @@ import {
 import { ACT_GUN_AIM, GROUND_STEP_LEFT_GROUND, MARIO_ANIM_FIRST_PUNCH, MARIO_ANIM_WALKING, MARIO_ANIM_SIDESTEP_LEFT,
     MARIO_ANIM_SIDESTEP_RIGHT, set_anim_to_frame } from "./Mario"
 import { pinParts, strafeDirection, AIM_FRAME } from "./MarioAimAnimation"
+import { rigArms } from "./MarioAimRig"
 import { updateWeaponAim, stopWeaponAim } from "./MarioWeapon"
 import { sins, coss, int16 } from "../utils"
 
@@ -963,8 +964,8 @@ const AIM_STRAFE = {
 }
 const set_aim_strafe_animation = (m, direction, speed) => {
     const strafe = AIM_STRAFE[direction]
-    if (!strafe.anim) strafe.anim = pinParts(m.animation.animList[strafe.base()],
-        m.animation.animList[MARIO_ANIM_FIRST_PUNCH], AIM_FRAME, undefined, { reverse: strafe.reverse })
+    if (!strafe.anim) strafe.anim = rigArms(pinParts(m.animation.animList[strafe.base()],
+        m.animation.animList[MARIO_ANIM_FIRST_PUNCH], AIM_FRAME, undefined, { reverse: strafe.reverse }))
     const info = m.marioObj.gfx.animInfo
     m.animation.targetAnim = strafe.anim
     if (info.animID !== strafe.id) {
@@ -976,6 +977,19 @@ const set_aim_strafe_animation = (m, direction, speed) => {
     }
     // Step cadence follows strafing speed, like Mario's normal walk.
     info.animAccel = Math.round(Math.max(0.5, speed / 3) * 0x10000)
+}
+// Standing still holds the punch's extended pose, with the arms rigged.
+const AIM_STAND = { id: 0x1000 }
+const set_aim_stand_animation = (m) => {
+    if (!AIM_STAND.anim) AIM_STAND.anim = rigArms(m.animation.animList[MARIO_ANIM_FIRST_PUNCH])
+    const info = m.marioObj.gfx.animInfo
+    m.animation.targetAnim = AIM_STAND.anim
+    if (info.animID !== AIM_STAND.id) {
+        info.animID = AIM_STAND.id
+        info.curAnim = AIM_STAND.anim
+        info.animYTrans = m.unkB0
+        info.animAccel = 0
+    }
 }
 const act_gun_aim = (m) => {
     if (!window.playerInput.buttonDownAim) {
@@ -1009,7 +1023,7 @@ const act_gun_aim = (m) => {
     }
 
     stationary_ground_step(m)
-    set_mario_animation(m, MARIO_ANIM_FIRST_PUNCH)
+    set_aim_stand_animation(m)
     set_anim_to_frame(m, AIM_FRAME)
     return false
 }

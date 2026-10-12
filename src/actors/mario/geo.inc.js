@@ -215,6 +215,7 @@ export const mario_geo_body = [
                     GEO_OPEN_NODE(),
                         GEO_BRANCH(1, mario_geo_face_and_wings), // stops sharing because faces has its own dl
                     GEO_CLOSE_NODE(),
+                    GEO_ASM(0, 'MarioWeapon.geo_mario_aim_arms'),
                     GEO_ANIMATED_PART(LAYER_OPAQUE, 67, -10, 79, null),
                     GEO_OPEN_NODE(),
                         GEO_ANIMATED_PART(LAYER_OPAQUE, 0, 0, 0, mario_left_arm), // starts sharing solid color with mario_left_forearm (red)
@@ -333,6 +334,7 @@ export const mario_geo_medium_poly_body = [
                     GEO_OPEN_NODE(),
                         GEO_BRANCH(1, mario_geo_face_and_wings), // stops sharing because faces has its own dl - medium poly mario uses high poly face
                     GEO_CLOSE_NODE(),
+                    GEO_ASM(0, 'MarioWeapon.geo_mario_aim_arms'),
                     GEO_ANIMATED_PART(LAYER_OPAQUE, 67, -10, 79, null),
                     GEO_OPEN_NODE(),
                         GEO_ANIMATED_PART(LAYER_OPAQUE, 0, 0, 0, mario_medium_poly_left_arm), // starts sharing solid color with mario_left_forearm (red)
@@ -501,6 +503,7 @@ export const mario_geo_low_poly_body = [
                     GEO_OPEN_NODE(),
                         GEO_BRANCH(1, mario_geo_low_poly_face_and_wings), // stops sharing because faces has its own dl
                     GEO_CLOSE_NODE(),
+                    GEO_ASM(0, 'MarioWeapon.geo_mario_aim_arms'),
                     GEO_ANIMATED_PART(LAYER_OPAQUE, 67, -10, 79, null),
                     GEO_OPEN_NODE(),
                         GEO_ANIMATED_PART(LAYER_OPAQUE, 0, 0, 0, mario_low_poly_left_arm), // starts sharing solid color with mario_left_forearm (red)
@@ -673,6 +676,7 @@ export const mario_vanish_geo_body = [
                     GEO_OPEN_NODE(),
                         GEO_BRANCH(1, mario_vanish_geo_face_and_wings),
                     GEO_CLOSE_NODE(),
+                    GEO_ASM(0, 'MarioWeapon.geo_mario_aim_arms'),
                     GEO_ANIMATED_PART(LAYER_TRANSPARENT, 67, -10, 79, null),
                     GEO_OPEN_NODE(),
                         GEO_ANIMATED_PART(LAYER_TRANSPARENT, 0, 0, 0, mario_left_arm),
@@ -791,6 +795,7 @@ export const mario_vanish_geo_medium_poly_body = [
                     GEO_OPEN_NODE(),
                         GEO_BRANCH(1, mario_vanish_geo_face_and_wings),
                     GEO_CLOSE_NODE(),
+                    GEO_ASM(0, 'MarioWeapon.geo_mario_aim_arms'),
                     GEO_ANIMATED_PART(LAYER_TRANSPARENT, 67, -10, 79, null),
                     GEO_OPEN_NODE(),
                         GEO_ANIMATED_PART(LAYER_TRANSPARENT, 0, 0, 0, mario_medium_poly_left_arm),
@@ -959,6 +964,7 @@ export const mario_vanish_geo_low_poly_body = [
                     GEO_OPEN_NODE(),
                         GEO_BRANCH(1, mario_vanish_geo_low_poly_face_and_wings),
                     GEO_CLOSE_NODE(),
+                    GEO_ASM(0, 'MarioWeapon.geo_mario_aim_arms'),
                     GEO_ANIMATED_PART(LAYER_TRANSPARENT, 67, -10, 79, null),
                     GEO_OPEN_NODE(),
                         GEO_ANIMATED_PART(LAYER_TRANSPARENT, 0, 0, 0, mario_low_poly_left_arm),
@@ -1111,6 +1117,7 @@ export const mario_metal_geo_body = [
                     GEO_OPEN_NODE(),
                         GEO_BRANCH(1, mario_metal_geo_face_and_wings), // unlike normal mario geo, these dls still share the metal texture
                     GEO_CLOSE_NODE(),
+                    GEO_ASM(0, 'MarioWeapon.geo_mario_aim_arms'),
                     GEO_ANIMATED_PART(LAYER_OPAQUE, 67, -10, 79, null),
                     GEO_OPEN_NODE(),
                         GEO_ANIMATED_PART(LAYER_OPAQUE, 0, 0, 0, mario_left_arm_shared_dl),
@@ -1229,6 +1236,7 @@ export const mario_metal_geo_medium_poly_body = [
                     GEO_OPEN_NODE(),
                         GEO_BRANCH(1, mario_metal_geo_face_and_wings),
                     GEO_CLOSE_NODE(),
+                    GEO_ASM(0, 'MarioWeapon.geo_mario_aim_arms'),
                     GEO_ANIMATED_PART(LAYER_OPAQUE, 67, -10, 79, null),
                     GEO_OPEN_NODE(),
                         GEO_ANIMATED_PART(LAYER_OPAQUE, 0, 0, 0, mario_medium_poly_left_arm_shared_dl),
@@ -1377,6 +1385,7 @@ export const mario_metal_geo_low_poly_body = [
                     GEO_OPEN_NODE(),
                         GEO_BRANCH(1, mario_metal_geo_low_poly_face_and_wings),
                     GEO_CLOSE_NODE(),
+                    GEO_ASM(0, 'MarioWeapon.geo_mario_aim_arms'),
                     GEO_ANIMATED_PART(LAYER_OPAQUE, 67, -10, 79, null),
                     GEO_OPEN_NODE(),
                         GEO_ANIMATED_PART(LAYER_OPAQUE, 0, 0, 0, mario_low_poly_left_arm_shared_dl),
@@ -1529,6 +1538,7 @@ export const mario_metal_vanish_geo_body = [
                     GEO_OPEN_NODE(),
                         GEO_BRANCH(1, mario_metal_vanish_geo_face_and_wings),
                     GEO_CLOSE_NODE(),
+                    GEO_ASM(0, 'MarioWeapon.geo_mario_aim_arms'),
                     GEO_ANIMATED_PART(LAYER_TRANSPARENT, 67, -10, 79, null),
                     GEO_OPEN_NODE(),
                         GEO_ANIMATED_PART(LAYER_TRANSPARENT, 0, 0, 0, mario_left_arm_shared_dl),
@@ -1647,6 +1657,7 @@ export const mario_metal_vanish_geo_medium_poly_body = [
                     GEO_OPEN_NODE(),
                         GEO_BRANCH(1, mario_metal_vanish_geo_face_and_wings),
                     GEO_CLOSE_NODE(),
+                    GEO_ASM(0, 'MarioWeapon.geo_mario_aim_arms'),
                     GEO_ANIMATED_PART(LAYER_TRANSPARENT, 67, -10, 79, null),
                     GEO_OPEN_NODE(),
                         GEO_ANIMATED_PART(LAYER_TRANSPARENT, 0, 0, 0, mario_medium_poly_left_arm_shared_dl),
@@ -1798,6 +1809,7 @@ export const mario_metal_vanish_geo_low_poly_body = [
                     GEO_OPEN_NODE(),
                         GEO_BRANCH(1, mario_metal_vanish_geo_low_poly_face_and_wings),
                     GEO_CLOSE_NODE(),
+                    GEO_ASM(0, 'MarioWeapon.geo_mario_aim_arms'),
                     GEO_ANIMATED_PART(LAYER_TRANSPARENT, 67, -10, 79, null),
                     GEO_OPEN_NODE(),
                         GEO_ANIMATED_PART(LAYER_TRANSPARENT, 0, 0, 0, mario_low_poly_left_arm_shared_dl),

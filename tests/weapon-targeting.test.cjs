@@ -500,3 +500,71 @@ test('Mario aims and fires through ordinary jumps and falls, turning his body bu
     assert.equal(mario.action, ACT_BACKWARD_AIR_KB)
     assert.equal(weapon.weaponState.target, null)
 })
+
+// Forward kinematics of Mario's skeleton the way GeoRenderer draws it: the object
+// transform, the geo's 0.25 scale, then each animated part from the animation.
+const SKELETON = [[0, 0, 0, -1], [0, 0, 0, 0], [68, 0, 0, 1], [87, 0, 0, 2], [67, -10, 79, 2], [0, 0, 0, 4],
+    [65, 0, 0, 5], [60, 0, 0, 6], [68, -10, -79, 2], [0, 0, 0, 8], [65, 0, 0, 9], [60, 0, 0, 10]]
+function skeleton(M, anim, frame, pos, yaw) {
+    const read = ch => {
+        const v = anim.values[anim.indices[ch * 2 + 1] + Math.min(frame, anim.indices[ch * 2] - 1)]
+        return v > 32767 ? v - 65536 : v
+    }
+    const object = M.Mat4(), scaled = M.Mat4()
+    M.mtxf_rotate_zxy_and_translate(object, pos, [0, yaw, 0])
+    M.mtxf_scale_vec3f(scaled, object, [0.25, 0.25, 0.25])
+    const parts = []
+    const part = (i, parentMatrix) => {
+        const [x, y, z] = SKELETON[i]
+        const t = i === 0 ? [read(0), read(1), read(2)] : [x, y, z]
+        const local = M.Mat4(), out = M.Mat4()
+        M.mtxf_rotate_xyz_and_translate(local, t, [0, 1, 2].map(a => read(3 + i * 3 + a)))
+        M.mtxf_mul(out, local, parentMatrix)
+        return parts[i] = out
+    }
+    part(0, scaled)
+    for (let i = 1; i <= 3; i++) part(i, parts[SKELETON[i][3]])
+    return { parts, arms: () => { for (let i = 4; i < SKELETON.length; i++) part(i, parts[SKELETON[i][3]]) } }
+}
+
+test('the gun arm points the barrel at the target, upright, in every aiming pose', () => {
+    const { weapon, mario, r } = weaponRuntime()
+    const M = r.load('engine/math_util.js')
+    const { rigArms } = r.load('game/MarioAimRig.js')
+    const { pinParts, AIM_PARTS, AIR_AIM_PARTS } = r.load('game/MarioAimAnimation.js')
+    const { gMarioAnimData: A } = r.load('actors/mario/marioAnimData.js')
+    const punch = A[0x67]
+    const poses = {
+        standing: [rigArms(punch), [10]],
+        strafing: [rigArms(pinParts(A[0x48], punch, 10, AIM_PARTS)), [0, 20, 40, 60]],
+        sidestep: [rigArms(pinParts(A[0x7F], punch, 10, AIM_PARTS)), [0, 10, 20]],
+        jumping: [rigArms(pinParts(A[0x4D], punch, 10, AIR_AIM_PARTS)), [0, 5, 11]],
+    }
+    const camera = M.Mat4()
+    M.mtxf_lookat(camera, [300, 400, -900], [0, 100, 0], 0)
+    const cameraMatrix = M.Mat4()
+    M.mtxf_copy(cameraMatrix, camera)
+    const marioPos = [0, 0, 0]
+    for (const [name, [rig, frames]] of Object.entries(poses)) {
+        for (const frame of frames) for (const [yaw, target] of [[0, [200, 150, 2500]], [0x2000, [2000, -300, 1500]], [-0x4000, [-2500, 600, -400]]]) {
+            weapon.weaponState.aimPoint = target
+            weapon.weaponState.aimDir = [0, 0, 1]
+            const body = skeleton(M, rig, frame, marioPos, yaw)
+            const torsoCam = M.Mat4()
+            M.mtxf_mul(torsoCam, body.parts[2], cameraMatrix)
+            r.linker.GeoRenderer = { gCurAnimData: rig.values, gCurrAnimFrame: frame, gCurGraphNodeCamera: { matrixPtr: cameraMatrix } }
+            weapon.geo_mario_aim_arms(1, {}, torsoCam)
+            body.arms()
+            const hand = body.parts[11]
+            const unit = v => { const l = Math.hypot(...v); return v.map(x => x / l) }
+            const barrel = unit(hand[0].slice(0, 3)), gunUp = unit(hand[1].slice(0, 3))
+            const toTarget = unit(target.map((v, i) => v - hand[3][i]))
+            const error = Math.acos(Math.min(1, barrel.reduce((s, v, i) => s + v * toTarget[i], 0))) * 180 / Math.PI
+            assert.ok(error < 3, `${name} frame ${frame} yaw ${yaw}: barrel ${error.toFixed(1)}° off target`)
+            assert.ok(gunUp[1] > 0.9, `${name} frame ${frame} yaw ${yaw}: gun upright (${gunUp[1].toFixed(2)})`)
+        }
+    }
+    // Other Mario-shaped models (Luigi) aren't rigged and are left alone.
+    r.linker.GeoRenderer.gCurAnimData = punch.values
+    assert.equal(weapon.geo_mario_aim_arms(1, {}, M.Mat4()), null)
+})
