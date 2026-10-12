@@ -225,83 +225,126 @@ test('Luigi behavior switches animations on car entry and exit and ignores an un
     assert.equal(luigi.luigi.riding, false)
 })
 
-test('accelerates, reverses, steers and brakes within speed limits', () => {
-    const { advanceCar } = runtime().load('game/GardenCarPhysics.js')
+// GTA physics helpers: run frames, read km/h and heading in degrees.
+const drive = (physics, car, input, frames, collision = flatCollision, unsafe = [], until) => {
+    for (let i = 0; i < frames; i++) {
+        physics.advanceCar(car, input, collision, unsafe)
+        if (until && until(car)) return i + 1
+    }
+    return frames
+}
+const degrees = yaw => (((yaw + 32768) % 65536 + 65536) % 65536 - 32768) * 180 / 32768
+
+test('GTA handling: settles on its springs, accelerates through the gears, steers, brakes and reverses', () => {
+    const physics = runtime().load('game/GardenCarPhysics.js')
     const car = state()
-    for (let i = 0; i < 100; i++) advanceCar(car, { stickY: 64 }, flatCollision, [])
-    assert.equal(car.speed, 70)
-    assert.ok(car.z > 0)
-    advanceCar(car, { stickY: 64, stickX: 64 }, flatCollision, [])
-    assert.notEqual(car.yaw, 0)
-    for (let i = 0; i < 30; i++) advanceCar(car, { buttonDownA: true }, flatCollision, [])
-    assert.equal(car.speed, 0)
-    for (let i = 0; i < 100; i++) advanceCar(car, { stickY: -64 }, flatCollision, [])
-    assert.equal(car.speed, -28)
+    drive(physics, car, {}, 60)
+    assert.equal(car.onGround, 4, 'all four wheels on the ground')
+    assert.ok(Math.abs(car.y - 260) < 5, 'rests at ground height on its suspension')
+    assert.ok(physics.carAtRest(car), 'a settled car sleeps')
+    let spin = 0
+    const toHundred = drive(physics, car, { stickY: 64 }, 600, flatCollision, [], c => { if (c.wheelStates[1] === 1) spin++; return c.kmh >= 100 })
+    assert.ok(toHundred / 30 > 3 && toHundred / 30 < 9, `0-100 km/h in ${toHundred / 30}s`)
+    assert.ok(spin > 0, 'rear-wheel drive spins its tyres off the line')
+    assert.ok(car.gear >= 2, 'changes up')
+    drive(physics, car, { stickY: 64 }, 30 * 40)
+    assert.ok(car.kmh > 150 && car.kmh < 180, `top speed ${car.kmh}`)
+    assert.ok(car.z > 10000)
+    const heading = car.yaw
+    drive(physics, car, { stickY: 64, stickX: 64 }, 30)
+    assert.ok(degrees(heading - car.yaw) > 5, 'steering right turns right (yaw decreases)')
+    const stop = drive(physics, car, { stickY: -64 }, 600, flatCollision, [], c => c.kmh < 1)
+    assert.ok(stop / 30 < 6, `brakes to a stop in ${stop / 30}s`)
+    drive(physics, car, { stickY: -64 }, 30 * 10)
+    assert.ok(car.speed < 0, 'holding brake at a standstill reverses')
+    assert.ok(car.kmh < 60, `reverse is limited (${car.kmh} km/h)`)
 })
 
-test('blocks walls, deep water, missing floors, steep slopes and death floors', () => {
-    const { advanceCar } = runtime().load('game/GardenCarPhysics.js')
+test('GTA handling: the handbrake locks the rear wheels and kicks the tail out', () => {
+    const physics = runtime().load('game/GardenCarPhysics.js')
+    const car = state()
+    drive(physics, car, {}, 30)
+    drive(physics, car, { stickY: 64 }, 600, flatCollision, [], c => c.kmh >= 70)
+    const before = car.yaw
+    drive(physics, car, { stickX: 64, buttonDownA: true }, 30)
+    const { forward, moveSpeed } = car.body
+    const slip = Math.abs(Math.atan2(forward[0], forward[2]) - Math.atan2(moveSpeed[0], moveSpeed[2])) * 180 / Math.PI
+    assert.ok(slip > 5, `slides sideways (${slip.toFixed(1)}°)`)
+    assert.ok(degrees(before - car.yaw) > 20, 'swings round')
+    assert.ok([car.wheelStates[1], car.wheelStates[3]].every(s => s === 3), 'rear wheels locked')
+})
+test('walls stop the car with an impact, and it never enters water, voids, low ceilings or death floors', () => {
+    const physics = runtime().load('game/GardenCarPhysics.js')
+    // A wall across the road at z = 1500 pushes the body back out.
+    const wall = { ...flatCollision, f32_find_wall_collision(pos) {
+        if (pos.z <= 1500 - 30) return 0
+        pos.z = 1500 - 30
+        return 1
+    } }
+    const car = state()
+    let impact = false
+    drive(physics, car, { stickY: 64 }, 300, wall, [], c => { impact = impact || c.impact; return false })
+    assert.ok(car.z < 1500, 'stays behind the wall')
+    assert.ok(impact, 'reports the crash')
+    assert.ok(Math.abs(car.speed) < 5, 'stopped by the wall')
     const hazards = [
-        { f32_find_wall_collision: () => 1 },
-        { find_ceil: () => 400 },
-        { find_water_level: () => 400 },
-        { find_floor: (x,y,z,w) => { w.floor = null; return -11000 } },
-        { find_floor: (x,y,z,w) => { w.floor = { normal: { y: 0.4 }, type: 0 }; return 260 } },
-        { find_floor: (x,y,z,w) => { w.floor = { normal: { y: 1 }, type: 10 }; return 260 } },
+        { find_water_level: (x, z) => z > 1000 ? 400 : -11000 },
+        { find_floor: (x, y, z, w) => { w.floor = z > 1000 ? null : flatFloor; return z > 1000 ? -11000 : 260 } },
+        { find_floor: (x, y, z, w) => { w.floor = z > 1000 ? { normal: { y: 1 }, type: 10 } : flatFloor; return 260 } },
+        { find_ceil: (x, y, z) => z > 1000 ? 360 : 20000 },
     ]
     for (const hazard of hazards) {
-        const car = state()
-        advanceCar(car, { stickY: 64 }, { ...flatCollision, ...hazard }, [10])
-        assert.equal(car.speed, 0)
-        assert.equal(car.z, 0)
+        const blocked = state()
+        drive(physics, blocked, { stickY: 64 }, 300, { ...flatCollision, ...hazard }, [10])
+        assert.ok(blocked.z < 1000 && blocked.z > 300, `stopped short of the hazard at ${blocked.z}`)
+        assert.ok([blocked.x, blocked.y, blocked.z].every(Number.isFinite))
     }
 })
-
-test('climbs and descends hills, tilts across slopes and exits on an incline', () => {
-    const { advanceCar, findCarExit } = runtime().load('game/GardenCarPhysics.js')
-    const grade = Math.tan(Math.PI / 6)
-    const floor = { type: 0, normal: { x: 0, y: Math.cos(Math.PI / 6), z: -Math.sin(Math.PI / 6) } }
-    const hill = { ...flatCollision, find_floor(x,y,z,wrapper) {
-        const height = 260 + z * grade
-        // Match the engine's floor query tolerance: probing too low misses it.
-        wrapper.floor = y >= height - 78 ? floor : null
+test('climbs and descends hills, pitches and banks with the ground, and falls off ledges', () => {
+    const physics = runtime().load('game/GardenCarPhysics.js')
+    const angle = 15 * Math.PI / 180, grade = Math.tan(angle)
+    const floor = { type: 0, normal: { x: 0, y: Math.cos(angle), z: -Math.sin(angle) } }
+    const hill = { ...flatCollision, find_floor(x, y, z, wrapper) {
+        const height = 260 + Math.max(0, z) * grade
+        wrapper.floor = y >= height - 78 ? (z > 0 ? floor : flatFloor) : null
         return wrapper.floor ? height : -11000
     } }
-    const car = { ...state(), floor }
-    for (let frame = 0; frame < 100; frame++) advanceCar(car, { stickY: 64 }, hill, [])
-    assert.ok(car.z > 1000, 'a normal hill must not stop the car')
-    assert.ok(Math.abs(car.y - (260 + car.z * grade)) < 0.01)
-    assert.ok(Math.abs(car.pitch + 65536 / 12) < 1, 'chassis must pitch 30 degrees uphill')
-    assert.ok(Math.abs(car.roll) < 1)
-    assert.ok(findCarExit(car, hill, []))
+    const car = { ...state(), z: -600 }
+    drive(physics, car, {}, 30, hill)
+    drive(physics, car, { stickY: 64 }, 30 * 6, hill)
+    assert.ok(car.z > 1000, 'climbs a 15° hill')
+    assert.ok(Math.abs(car.y - (260 + car.z * grade)) < 15, 'wheels stay on the slope')
+    assert.ok(Math.abs(degrees(car.pitch) + 15) < 4, `pitches nose-up with the hill (${degrees(car.pitch)}°)`)
+    assert.ok(Math.abs(degrees(car.roll)) < 2)
     const top = car.y
-    for (let frame = 0; frame < 120; frame++) advanceCar(car, { stickY: -64 }, hill, [])
-    assert.ok(car.y < top, 'car must be able to reverse downhill')
-    const sideways = { ...state(), floor, yaw: 16384 }
-    for (let frame = 0; frame < 60; frame++) advanceCar(sideways, {}, hill, [])
-    assert.ok(Math.abs(sideways.pitch) < 1)
-    assert.ok(Math.abs(sideways.roll + 65536 / 12) < 1, 'chassis must bank across the hill')
-    const cliff = { ...flatCollision, find_floor(x,y,z,wrapper) {
+    drive(physics, car, { stickY: -64 }, 30 * 3, hill)
+    drive(physics, car, { stickY: -64 }, 30 * 3, hill)
+    assert.ok(car.y < top, 'reverses back down')
+    assert.ok(physics.findCarExit(car, hill, []))
+
+    // Parked across the slope it banks instead of pitching.
+    const sideways = { ...state(), z: 800, y: 260 + 800 * grade, yaw: 16384 }
+    drive(physics, sideways, {}, 60, hill)
+    assert.ok(Math.abs(Math.abs(degrees(sideways.roll)) - 15) < 4, `banks across the hill (${degrees(sideways.roll)}°)`)
+    assert.ok(Math.abs(degrees(sideways.pitch)) < 3)
+
+    // GTA cars can drive off a ledge: it falls and lands on the ground below.
+    const cliff = { ...flatCollision, find_floor(x, y, z, wrapper) {
         wrapper.floor = flatFloor
-        return z > 100 ? -300 : 260
+        return z > 600 && y > 220 ? 260 : z > 600 ? -40 : 260
+    } }
+    const ledge = { ...flatCollision, find_floor(x, y, z, wrapper) {
+        wrapper.floor = flatFloor
+        return z > 600 ? -40 : 260
     } }
     const edge = state()
-    advanceCar(edge, { stickY: 64 }, cliff, [])
-    assert.equal(edge.speed, 0, 'slope support must not allow a sheer drop')
-    const steepGrade = Math.tan(40 * Math.PI / 180)
-    const slopeNormal = { x: 0, y: Math.cos(40 * Math.PI / 180), z: -Math.sin(40 * Math.PI / 180) }
-    const ramp = { ...flatCollision, find_floor(x,y,z,wrapper) {
-        const height = 260 + Math.max(0, Math.min(z, 600)) * steepGrade
-        wrapper.floor = y >= height - 78 ? { type: 0,
-            normal: z > 0 && z < 600 ? slopeNormal : { x: 0, y: 1, z: 0 } } : null
-        return wrapper.floor ? height : -11000
-    } }
-    const approaching = { ...state(), z: -350 }
-    for (let frame = 0; frame < 100; frame++) advanceCar(approaching, { stickY: 64 }, ramp, [])
-    assert.ok(approaching.z > 900, 'car must pass both the foot and crest of a 40-degree hill')
-    assert.ok(Math.abs(approaching.pitch) < 1, 'car must level out after the crest')
+    drive(physics, edge, { stickY: 64 }, 30 * 4, ledge)
+    assert.ok(edge.z > 700, 'drives over the edge')
+    drive(physics, edge, {}, 30 * 3, ledge)
+    assert.ok(Math.abs(edge.y + 40) < 10, `lands on the ground below (${edge.y})`)
+    assert.equal(edge.onGround, 4)
+    assert.ok(cliff)
 })
-
 function castleGroundCollision(r) {
     const surfaces = r.load('include/surface_terrains.js')
     const loader = r.load('game/SurfaceLoad.js').SurfaceLoadInstance
@@ -320,17 +363,17 @@ function castleGroundCollision(r) {
     return r.load('engine/SurfaceCollision.js').SurfaceCollisionInstance
 }
 
-test('spawn footprint and exits fit the actual castle grounds terrain', () => {
+test('the car settles on the real castle grounds spawn and can drive off and be exited', () => {
     const r = runtime()
     const collision = castleGroundCollision(r)
     const physics = r.load('game/GardenCarPhysics.js')
     const car = { ...state(), x: -900, z: 4400, yaw: 32768 }
-    assert.ok(physics.carGround(collision, car.x, car.y, car.z, car.yaw, [10, 1]))
+    drive(physics, car, {}, 60, collision, [10, 1])
+    assert.equal(car.onGround, 4)
     assert.ok(physics.findCarExit(car, collision, [10, 1]))
-    for (let i = 0; i < 20; i++) physics.advanceCar(car, { stickY: 64 }, collision, [10, 1])
-    assert.ok(car.z < 4300, 'car must be able to leave its parking spot')
+    drive(physics, car, { stickY: 64 }, 45, collision, [10, 1])
+    assert.ok(car.z < 4200, 'car must be able to leave its parking spot')
 })
-
 test('long drives update the real castle grounds camera without exceptions', () => {
     const r = runtime()
     const collision = castleGroundCollision(r)
@@ -429,7 +472,7 @@ test('enter, move, exit safely and release Mario when changing levels', () => {
     r.context.window.playerInput = { buttonPressedVehicle: true }
     assert.equal(api.updateGardenCar(mario, 1, true), false)
     assert.equal(mario.marioObj.gfx.flags & 16, 0)
-    assert.ok(Math.abs(mario.pos[0]) >= 300)
+    assert.ok(Math.abs(mario.pos[0]) >= 200, 'exits beside the car')
     api.updateGardenCar(mario, 1, true)
     r.linker.Area.gCurrLevelNum = 6
     assert.equal(api.updateGardenCar(mario, 1, true), false)
@@ -606,4 +649,20 @@ test('Luigi sits in the passenger seat, on the far side from the driver', () => 
     // +X is the driver's (left) side of a car facing +Z.
     assert.ok(PASSENGER_SEAT[0] < 0)
     assert.deepEqual([...luigi.pos].map(Math.round), [1000 + PASSENGER_SEAT[0], 260 + PASSENGER_SEAT[1], 2000 + PASSENGER_SEAT[2]])
+})
+
+test('a frame of GTA car physics on the real castle grounds stays cheap', () => {
+    const r = runtime()
+    const collision = castleGroundCollision(r)
+    const physics = r.load('game/GardenCarPhysics.js')
+    const car = { ...state(), x: -900, z: 4400, yaw: 32768 }
+    drive(physics, car, {}, 30, collision, [10, 1])
+    const start = process.hrtime.bigint()
+    const frames = 900
+    for (let i = 0; i < frames; i++) {
+        physics.advanceCar(car, { stickY: 64, stickX: i % 200 < 100 ? 40 : -40, buttonDownA: i % 300 > 280 }, collision, [10, 1])
+        assert.ok([car.x, car.y, car.z].every(Number.isFinite), `finite at frame ${i}`)
+    }
+    const ms = Number(process.hrtime.bigint() - start) / 1e6 / frames
+    assert.ok(ms < 2, `${ms.toFixed(3)} ms per frame`)
 })

@@ -2,7 +2,7 @@ import { oPosX, oPosY, oPosZ, oFaceAnglePitch, oFaceAngleYaw, oFaceAngleRoll, oI
 import { GRAPH_RENDER_INVISIBLE } from "../engine/graph_node"
 import { LEVEL_CASTLE_GROUNDS } from "../levels/level_defines_constants"
 import { SURFACE_DEATH_PLANE, SURFACE_BURNING } from "../include/surface_terrains"
-import { advanceCar, findCarExit } from "./GardenCarPhysics"
+import { advanceCar, findCarExit, stopCar, carAtRest } from "./GardenCarPhysics"
 
 const unsafeTypes = [SURFACE_DEATH_PLANE, SURFACE_BURNING]
 let car, hud
@@ -34,6 +34,8 @@ export const bhv_garden_car_loop = () => {
         }
     }
     car = object.gardenCar
+    // A car nobody is driving still settles on its springs and rolls to a stop.
+    if (!car.driving && !carAtRest(car)) advanceCar(car, {}, gLinker.SurfaceCollision, unsafeTypes)
     object.rawData[oPosX] = car.x
     object.rawData[oPosY] = car.y
     object.rawData[oPosZ] = car.z
@@ -50,7 +52,7 @@ export const updateGardenCar = (m, idleAction, canEnter) => {
         || area.gCurrentArea !== car.area || !m.action || !canEnter || m.health < 0x100) {
         if (car && car.driving) {
             car.driving = false
-            car.speed = 0
+            stopCar(car)
             m.marioObj.gfx.flags &= ~GRAPH_RENDER_INVISIBLE
         }
         if (hud) hud.hidden = true
@@ -67,7 +69,7 @@ export const updateGardenCar = (m, idleAction, canEnter) => {
         m.action = idleAction
         m.actionState = m.actionTimer = m.actionArg = 0
     } else if (toggle && car.driving) {
-        car.speed = 0
+        stopCar(car)
         const exit = findCarExit(car, gLinker.SurfaceCollision, unsafeTypes)
         if (exit) {
             car.driving = false
@@ -102,6 +104,6 @@ export const updateGardenCar = (m, idleAction, canEnter) => {
     m.marioObj.gfx.pos = [...m.pos]
     m.marioObj.gfx.angle = [...m.faceAngle]
     m.marioObj.gfx.flags |= GRAPH_RENDER_INVISIBLE
-    showHelp(`Driving · ↑ / ↓ forward / reverse · ← / → steer · Jump / crouch to brake · E / B exit · ${Math.round(Math.abs(car.speed))} speed`)
+    showHelp(`Driving · ↑ accelerate · ↓ brake / reverse · ← / → steer · Jump handbrake · Crouch brake · E / B exit · ${Math.round(car.kmh)} km/h · gear ${car.gear || 'R'}`)
     return true
 }

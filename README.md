@@ -80,14 +80,22 @@ Controls** to switch to this layout.
 A 1965 Ford Mustang convertible is parked on the starting lawn in the Castle
 Grounds (Main Map).
 Walk up to it and press **E** or the game's **B** button to enter or exit.
-Use **Up / Down** to accelerate forward or reverse and **Left / Right** to steer.
-The gamepad's left stick works too. Hold the jump or crouch button to brake
-(**Space / Z** with the default keyboard controls).
+Use **Up** to accelerate, **Down** to brake and then reverse, and **Left / Right**
+to steer. The gamepad's left stick works too. The jump button is the handbrake
+and crouch is the footbrake (**Space / Z** with the default keyboard controls).
 
-The car pitches and banks with the terrain, including hill entrances and crests.
-It stops at walls, deep water, extreme slopes and abrupt drops. Exit into an open
-space beside it; if there isn't room, move to another patch of grass first.
-It stays parked when you exit and resets when the Castle Grounds reloads.
+It drives like a GTA San Andreas car: its handling is ported from
+[gta-reversed](https://github.com/gta-reversed/gta-reversed)'s vehicle code. The
+car rides on four sprung, damped wheels, each with GTA's tyre friction circle, so
+the rear-drive Mustang spins its tyres off the line, works through five gears to
+about 165 km/h, understeers if you turn in too fast and slides when you pull the
+handbrake. It pitches under acceleration and braking, leans in corners and banks
+with the terrain, can drive off ledges and glances off walls. It won't enter
+deep water, lava or death floors. SA's per-car `handling.cfg` and surface grip
+table aren't part of gta-reversed, so the Mustang's handling values and tyre grip
+are tuned approximations in the same format. Exit into an open space beside it;
+if there isn't room, move to another patch of grass first. It stays parked when
+you exit and resets when the Castle Grounds reloads.
 
 The car model is
 ["1965 Ford Mustang Convertible"](https://sketchfab.com/3d-models/1965-ford-mustang-convertible-05f2a294087541ab82f681136d134344)

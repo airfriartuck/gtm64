@@ -77,7 +77,7 @@ export class LuigiCarDialogue {
             if (now >= this.expires && this.subtitle) this.subtitle.hidden = true
             if (now - this.lastSpoken >= 10) {
                 let key
-                if (this.previousSpeed > 25 && car.speed === 0 && !input.buttonDownA && !input.buttonDownZ) key = 'impact'
+                if (this.previousSpeed > 25 && (car.impact || car.speed === 0) && !input.buttonDownA && !input.buttonDownZ) key = 'impact'
                 else if (Math.abs(car.pitch || 0) > 1800 && Math.abs(car.speed) > 10) key = 'hill'
                 else if (Math.abs(input.stickX || 0) > 40 && car.speed > 35) key = 'turn'
                 else if (car.speed > 60) key = 'speed'
