@@ -568,3 +568,47 @@ test('the gun arm points the barrel at the target, upright, in every aiming pose
     r.linker.GeoRenderer.gCurAnimData = punch.values
     assert.equal(weapon.geo_mario_aim_arms(1, {}, M.Mat4()), null)
 })
+
+test('two-handed guns put the left hand on the barrel ahead of the right', () => {
+    const { weapon, r } = weaponRuntime()
+    const M = r.load('engine/math_util.js')
+    const { rigArms } = r.load('game/MarioAimRig.js')
+    const { gMarioAnimData: A } = r.load('actors/mario/marioAnimData.js')
+    const camera = M.Mat4()
+    M.mtxf_lookat(camera, [300, 400, -900], [0, 100, 0], 0)
+    const unit = v => { const l = Math.hypot(...v); return v.map(x => x / l) }
+    const grips = {}
+    const { WEAPONS } = r.load('game/Weapons.js')
+    for (const id of ['pistol', 'shotgun', 'm4', 'sniper']) {
+        weapon.weaponState.index = WEAPONS.findIndex(w => w.id === id)
+        const gun = weapon.currentWeapon()
+        // The squared-up stance (first person) for two-handed guns, the pistol stance otherwise.
+        const rig = rigArms(A[gun.foregrip ? 0xC2 : 0x67])
+        for (const [yaw, target] of [[0, [200, 150, 2500]], [0x2000, [2000, -300, 1500]]]) {
+            weapon.weaponState.aimPoint = target
+            const body = skeleton(M, rig, gun.foregrip ? 0 : 10, [0, 0, 0], yaw)
+            const torsoCam = M.Mat4()
+            M.mtxf_mul(torsoCam, body.parts[2], camera)
+            r.linker.GeoRenderer = { gCurAnimData: rig.values, gCurrAnimFrame: 0, gCurGraphNodeCamera: { matrixPtr: camera } }
+            weapon.geo_mario_aim_arms(1, {}, torsoCam)
+            body.arms()
+            const right = body.parts[11], left = body.parts[7]
+            const barrel = unit(right[0].slice(0, 3)), gunUp = unit(right[1].slice(0, 3))
+            const toTarget = unit(target.map((v, i) => v - right[3][i]))
+            assert.ok(barrel.reduce((s, v, i) => s + v * toTarget[i], 0) > Math.cos(3 * Math.PI / 180), `${id} on target`)
+            // The left wrist in the right hand's space (model units: world ÷ 0.25).
+            const rel = left[3].slice(0, 3).map((v, i) => (v - right[3][i]) * 4)
+            const along = rel.reduce((s, v, i) => s + v * barrel[i], 0), height = rel.reduce((s, v, i) => s + v * gunUp[i], 0)
+            if (!gun.foregrip) {
+                assert.ok(Math.hypot(...rel) > 150, `${id} is one-handed`)
+                continue
+            }
+            grips[`${id}@${yaw}`] = Math.round(along)
+            assert.ok(along >= 95 && along <= gun.foregrip[0] + 1, `${id}: left hand ${along.toFixed(0)} along the barrel`)
+            assert.ok(Math.abs(height - gun.foregrip[1]) < 3, `${id}: left hand ${height.toFixed(0)} high`)
+            const off = Math.hypot(...rel.map((v, i) => v - barrel[i] * along - gunUp[i] * height))
+            assert.ok(off < 3, `${id}: left hand ${off.toFixed(1)} off the gun's centre line`)
+        }
+    }
+    console.log('left grips', JSON.stringify(grips))
+})

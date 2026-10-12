@@ -10,11 +10,11 @@ import {
     stationary_ground_step, perform_ground_step
 } from "./MarioStep"
 
-import { ACT_GUN_AIM, GROUND_STEP_LEFT_GROUND, MARIO_ANIM_FIRST_PUNCH, MARIO_ANIM_WALKING, MARIO_ANIM_SIDESTEP_LEFT,
+import { ACT_GUN_AIM, GROUND_STEP_LEFT_GROUND, MARIO_ANIM_FIRST_PUNCH, MARIO_ANIM_FIRST_PERSON, MARIO_ANIM_WALKING, MARIO_ANIM_SIDESTEP_LEFT,
     MARIO_ANIM_SIDESTEP_RIGHT, set_anim_to_frame } from "./Mario"
 import { pinParts, strafeDirection, AIM_FRAME } from "./MarioAimAnimation"
 import { rigArms } from "./MarioAimRig"
-import { updateWeaponAim, stopWeaponAim } from "./MarioWeapon"
+import { updateWeaponAim, stopWeaponAim, currentWeapon } from "./MarioWeapon"
 import { sins, coss, int16 } from "../utils"
 
 import {
@@ -954,42 +954,38 @@ const check_common_stationary_cancels = (m) => {
 // Hold the aim button to draw the gun. Mario turns to the locked target (or
 // the camera's direction) and can strafe slowly without turning away.
 
-// Strafing walks forward/back or sidesteps, with the gun arm held out. The
-// animation IDs are read on use: Mario.js isn't initialised when this loads.
-const AIM_STRAFE = {
+// Aiming animations, built on first use with the arms rigged to the gun. For
+// one-handed guns Mario takes a bladed pistol stance, gun shoulder forward
+// (the punch's upper body); for two-handed guns he squares up so his left
+// hand can reach along the barrel. Strafing walks forward/back or sidesteps.
+// The animation IDs are read on use: Mario.js isn't initialised when this loads.
+const AIM_ANIMS = {
+    stand: { id: 0x1000, base: () => MARIO_ANIM_FIRST_PUNCH, twoHandedBase: () => MARIO_ANIM_FIRST_PERSON },
     forward: { id: 0x1001, base: () => MARIO_ANIM_WALKING },
     backward: { id: 0x1002, base: () => MARIO_ANIM_WALKING, reverse: true },
     left: { id: 0x1003, base: () => MARIO_ANIM_SIDESTEP_LEFT },
     right: { id: 0x1004, base: () => MARIO_ANIM_SIDESTEP_RIGHT },
 }
-const set_aim_strafe_animation = (m, direction, speed) => {
-    const strafe = AIM_STRAFE[direction]
-    if (!strafe.anim) strafe.anim = rigArms(pinParts(m.animation.animList[strafe.base()],
-        m.animation.animList[MARIO_ANIM_FIRST_PUNCH], AIM_FRAME, undefined, { reverse: strafe.reverse }))
-    const info = m.marioObj.gfx.animInfo
-    m.animation.targetAnim = strafe.anim
-    if (info.animID !== strafe.id) {
-        info.animID = strafe.id
-        info.curAnim = strafe.anim
-        info.animYTrans = m.unkB0
-        info.animFrame = strafe.anim.unk04
-        info.animFrameAccelAssist = strafe.anim.unk04 << 16
-    }
-    // Step cadence follows strafing speed, like Mario's normal walk.
-    info.animAccel = Math.round(Math.max(0.5, speed / 3) * 0x10000)
+const TWO_HANDED_ID = 0x10
+const build_aim_animation = (list, aim, twoHanded) => {
+    const punch = list[MARIO_ANIM_FIRST_PUNCH]
+    if (aim === AIM_ANIMS.stand) return rigArms(list[twoHanded ? aim.twoHandedBase() : aim.base()])
+    return rigArms(pinParts(list[aim.base()], punch, AIM_FRAME, twoHanded ? [] : undefined, { reverse: aim.reverse }))
 }
-// Standing still holds the punch's extended pose, with the arms rigged.
-const AIM_STAND = { id: 0x1000 }
-const set_aim_stand_animation = (m) => {
-    if (!AIM_STAND.anim) AIM_STAND.anim = rigArms(m.animation.animList[MARIO_ANIM_FIRST_PUNCH])
-    const info = m.marioObj.gfx.animInfo
-    m.animation.targetAnim = AIM_STAND.anim
-    if (info.animID !== AIM_STAND.id) {
-        info.animID = AIM_STAND.id
-        info.curAnim = AIM_STAND.anim
+const set_aim_animation = (m, name, accel) => {
+    const aim = AIM_ANIMS[name], twoHanded = Boolean(currentWeapon().foregrip)
+    const key = twoHanded ? 'twoHanded' : 'oneHanded', id = aim.id + (twoHanded ? TWO_HANDED_ID : 0)
+    if (!aim[key]) aim[key] = build_aim_animation(m.animation.animList, aim, twoHanded)
+    const anim = aim[key], info = m.marioObj.gfx.animInfo
+    m.animation.targetAnim = anim
+    if (info.animID !== id) {
+        info.animID = id
+        info.curAnim = anim
         info.animYTrans = m.unkB0
-        info.animAccel = 0
+        info.animFrame = anim.unk04
+        info.animFrameAccelAssist = anim.unk04 << 16
     }
+    info.animAccel = accel
 }
 const act_gun_aim = (m) => {
     if (!window.playerInput.buttonDownAim) {
@@ -1018,13 +1014,15 @@ const act_gun_aim = (m) => {
             stopWeaponAim()
             return set_mario_action(m, ACT_FREEFALL, 0)
         }
-        set_aim_strafe_animation(m, strafeDirection(m.intendedYaw, m.faceAngle[1]), speed)
+        // Step cadence follows strafing speed, like Mario's normal walk.
+        set_aim_animation(m, strafeDirection(m.intendedYaw, m.faceAngle[1]), Math.round(Math.max(0.5, speed / 3) * 0x10000))
         return false
     }
 
     stationary_ground_step(m)
-    set_aim_stand_animation(m)
-    set_anim_to_frame(m, AIM_FRAME)
+    set_aim_animation(m, 'stand', 0)
+    // The pistol stance holds the punch with the arm fully extended.
+    if (!currentWeapon().foregrip) set_anim_to_frame(m, AIM_FRAME)
     return false
 }
 

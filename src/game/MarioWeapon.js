@@ -9,7 +9,7 @@ import { ACT_GUN_AIM, ACT_GROUP_MASK, ACT_GROUP_STATIONARY, ACT_GROUP_MOVING, AC
     ACT_FLAG_BUTT_OR_STOMACH_SLIDE, INPUT_OFF_FLOOR, INPUT_B_PRESSED, ACT_JUMP, ACT_DOUBLE_JUMP, ACT_FREEFALL,
     ACT_LONG_JUMP, ACT_WALL_KICK_AIR, MARIO_ANIM_FIRST_PUNCH } from "./Mario"
 import { pinParts, AIR_AIM_PARTS, AIM_FRAME } from "./MarioAimAnimation"
-import { rigArms, rigForValues, writeRotation, writeAnimated, solveGunArm, LEFT_ARM, RIGHT_ARM } from "./MarioAimRig"
+import { rigArms, rigForValues, writeRotation, writeAnimated, solveGunArm, solveTwoHanded, LEFT_ARM, RIGHT_ARM } from "./MarioAimRig"
 import { int16 } from "../utils"
 import { play_gun_sound } from "../audio/external"
 import * as Targeting from "./WeaponTargeting"
@@ -232,13 +232,15 @@ export const geo_mario_aim_arms = (callContext, node, torso) => {
     if (!camera || !torso) return null
     const state = weaponState
     const toTorso = (v, isPoint) => intoPart(torso, intoCamera(camera, v, isPoint), isPoint)
-    const { rotations } = solveGunArm({
+    const aim = {
         point: state.aimPoint && toTorso(state.aimPoint, true),
         dir: toTorso(state.aimDir, false),
         up: toTorso([0, 1, 0], false),
-    })
-    RIGHT_ARM.forEach((part, i) => writeRotation(rig, part, rotations[i]))
-    LEFT_ARM.forEach(part => writeAnimated(rig, part, renderer.gCurrAnimFrame))
+    }
+    const foregrip = currentWeapon().foregrip
+    const arms = foregrip ? solveTwoHanded(aim, foregrip) : { right: solveGunArm(aim).rotations, left: null }
+    RIGHT_ARM.forEach((part, i) => writeRotation(rig, part, arms.right[i]))
+    LEFT_ARM.forEach((part, i) => arms.left ? writeRotation(rig, part, arms.left[i]) : writeAnimated(rig, part, renderer.gCurrAnimFrame))
     return null
 }
 

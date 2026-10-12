@@ -5,6 +5,8 @@ import { UNITS_PER_METRE, angleOffAim, targetHasToBeBroken } from "./WeaponTarge
 
 const metres = m => m * UNITS_PER_METRE
 
+// Two-handed guns (as in SA: shotgun, rifles) give the left hand a `foregrip`:
+// where along the barrel it holds, and how high, in right-hand units.
 export const WEAPONS = [
     { id: 'pistol', name: 'Pistol', type: 'WEAPON_PISTOL',
         damage: 25, range: metres(35), clip: 17, interval: 8, reload: 36, auto: false, spread: 5 },
@@ -12,13 +14,16 @@ export const WEAPONS = [
         damage: 70, range: metres(35), clip: 7, interval: 20, reload: 45, auto: false, spread: 4 },
     // Pellets land on every enemy in the cone, weaker with distance.
     { id: 'shotgun', name: 'Shotgun', type: 'WEAPON_SHOTGUN',
-        damage: 15, pellets: 6, range: metres(20), clip: 1, interval: 30, reload: 30, auto: false, spread: 14 },
+        damage: 15, pellets: 6, range: metres(20), clip: 1, interval: 30, reload: 30, auto: false, spread: 14,
+        foregrip: [170, 20] },
     { id: 'smg', name: 'Micro SMG', type: 'WEAPON_MICRO_UZI',
         damage: 20, range: metres(30), clip: 50, interval: 3, reload: 48, auto: true, spread: 7 },
     { id: 'm4', name: 'M4', type: 'WEAPON_M4',
-        damage: 30, range: metres(45), clip: 50, interval: 4, reload: 54, auto: true, spread: 4 },
+        damage: 30, range: metres(45), clip: 50, interval: 4, reload: 54, auto: true, spread: 4,
+        foregrip: [200, 40] },
     { id: 'sniper', name: 'Sniper Rifle', type: 'WEAPON_SNIPERRIFLE',
-        damage: 125, range: metres(100), clip: 1, interval: 40, reload: 40, auto: false, spread: 2 },
+        damage: 125, range: metres(100), clip: 1, interval: 40, reload: 40, auto: false, spread: 2,
+        foregrip: [110, 0] },
 ]
 
 export const nextWeapon = index => (index + 1) % WEAPONS.length

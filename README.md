@@ -214,6 +214,11 @@ the gun's spread.
 | M4 | 30 | 45 m | 50 | automatic |
 | Sniper Rifle | 125 | 100 m | 1 | semi-auto |
 
+Mario's arms are solved each frame so the barrel points at the target in any
+pose. He holds the pistol, Desert Eagle and Micro SMG in one hand from a bladed
+stance, and squares up to hold the shotgun, M4 and sniper rifle with both hands,
+as in SA.
+
 Each gun has its own sound: the ROM has no gunfire, so shots are synthesized
 from a filtered noise crack, a low thump and, for heavy guns, an echo. The
 shotgun pumps and the sniper rifle works its bolt after firing, and there are
