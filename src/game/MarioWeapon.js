@@ -145,6 +145,8 @@ const yawOf = v => Math.round(Math.atan2(v[0], v[2]) / Math.PI * 0x8000)
 // Mid-jump `body` is Mario's torso (torsoInWorld): when a flip leaves the lock
 // somewhere his arms can't point, he aims and fires straight ahead of his chest.
 export const updateWeaponAim = (m, input = window.playerInput, facing = m.faceAngle[1], body = null) => {
+    // Every aiming pose uses normal hand scale for muzzle alignment.
+    if (m.marioBodyState) m.marioBodyState.punchState = 0
     const state = weaponState
     const weapon = currentWeapon()
     const shooter = { pos: chest(m) }
@@ -247,12 +249,13 @@ export const updateAirAim = (m, setAction, input = window.playerInput) => {
     weaponState.airAim = canAimInAir(m, input)
     if (!weaponState.airAim) {
         if (!wasAiming) return
-        unpinAirPose(m)
         if (canStartAiming(m, input, true)) {
             m.faceAngle[1] = weaponState.airYaw
             setAction(m, ACT_GUN_AIM, 0)
-        } else if (m.action !== ACT_GUN_AIM) {
-            stopWeaponAim()
+            pinAirPose(m)
+        } else {
+            unpinAirPose(m)
+            if (m.action !== ACT_GUN_AIM) stopWeaponAim()
         }
         return
     }
@@ -285,7 +288,10 @@ const intoCamera = (camera, v, isPoint) => [0, 1, 2].map(j =>
 // aiming animation, solve the gun arm against the torso as it's being drawn.
 export const geo_mario_aim_arms = (callContext, node, torso) => {
     const renderer = gLinker.GeoRenderer
-    const rig = renderer && rigForValues(renderer.gCurAnimData)
+    const mario = gLinker.LevelUpdate && gLinker.LevelUpdate.gMarioState
+    if (callContext !== GEO_CONTEXT_RENDER || !isAiming() || !renderer || !renderer.gCurGraphNodeObject
+        || renderer.gCurGraphNodeObject.object !== mario.marioObj) return null
+    const rig = rigForValues(renderer.gCurAnimData)
     const camera = rig && renderer.gCurGraphNodeCamera && renderer.gCurGraphNodeCamera.matrixPtr
     if (!camera || !torso) return null
     const state = weaponState

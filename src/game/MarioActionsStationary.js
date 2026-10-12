@@ -1023,7 +1023,6 @@ const act_gun_aim = (m) => {
         return set_mario_action(m, m.input & INPUT_OFF_FLOOR ? ACT_FREEFALL : ACT_BEGIN_SLIDING, 0)
     }
 
-    m.marioBodyState.punchState = 0
     const aimYaw = updateWeaponAim(m)
     const turn = int16(Math.round(aimYaw) - m.faceAngle[1])
     m.faceAngle[1] = int16(m.faceAngle[1] + Math.max(-0x1800, Math.min(0x1800, turn)))

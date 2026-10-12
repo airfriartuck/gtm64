@@ -104,12 +104,36 @@ export const solveArm = (shoulder, wrist, pole, hand) => {
     }
 }
 
+const MIN_AIM_DISTANCE = 1e-6
+const directionFromShoulder = ({ point, dir }) => {
+    const toTarget = point ? sub(point, SHOULDER_R) : dir
+    return norm(Math.hypot(...toTarget) > MIN_AIM_DISTANCE ? toTarget : dir)
+}
+
+// The barrel sits `muzzleHeight` above the wrist. Rotate its frame so that
+// point - wrist = forward * distanceAlongBarrel + gunUp * muzzleHeight.
+// Projecting `up` against the target direction keeps the gun upright even
+// when the torso is tilted. Targets inside the offset cannot be intersected,
+// so clamp the correction rather than producing an invalid rotation.
+const gunFrame = (wrist, { point, dir, up, muzzleHeight = 0 }) => {
+    const toPoint = point && sub(point, wrist)
+    const distance = toPoint ? Math.hypot(...toPoint) : 0
+    const hand = frame(distance > MIN_AIM_DISTANCE ? toPoint : dir, up)
+    if (!point || distance < MIN_AIM_DISTANCE || muzzleHeight === 0) return hand
+    const sine = Math.max(-1, Math.min(1, muzzleHeight / distance))
+    const cosine = Math.sqrt(Math.max(0, 1 - sine * sine))
+    return [add(hand[0].map(value => value * cosine), hand[1], -sine),
+        add(hand[0].map(value => value * sine), hand[1], cosine), hand[2]]
+}
+
 // The gun arm for a one-handed weapon: straight out from the shoulder toward
-// the target point (or along `dir`), the gun upright against `up`.
-export const solveGunArm = ({ point, dir, up }) => {
-    const aim = point ? norm(sub(point, SHOULDER_R)) : norm(dir)
+// the target point (or along `dir`), with the barrel's height compensated at
+// the wrist so its centre line meets the target.
+export const solveGunArm = aim => {
+    const direction = directionFromShoulder(aim)
     const elbowDown = [-1, 0, -0.5]
-    return solveArm(SHOULDER_R, add(SHOULDER_R, aim, REACH), elbowDown, frame(aim, up))
+    const wrist = add(SHOULDER_R, direction, REACH)
+    return solveArm(SHOULDER_R, wrist, elbowDown, gunFrame(wrist, aim))
 }
 
 // Where the left hand can reach along a barrel running from `wrist` along
@@ -136,25 +160,26 @@ for (let left = -40; left <= 160; left += 10) {
 // A two-handed gun: the right hand holds the grip and the left reaches along
 // the barrel toward `foregrip` ([distance from the right wrist, height]).
 // Falls back to one hand when the left can't reach (left is null).
-export const solveTwoHanded = ({ point, dir, up }, foregrip) => {
-    let aim = point ? norm(sub(point, SHOULDER_R)) : norm(dir)
-    const gunUp = frame(aim, up)[1], left = cross(gunUp, aim)
+export const solveTwoHanded = (aim, foregrip) => {
+    const { point, up } = aim
+    const direction = directionFromShoulder(aim)
+    const freeHand = frame(direction, up), gunUp = freeHand[1], left = cross(gunUp, direction)
     let best = null
     for (const [f, l, u] of RIFLE_WRISTS) {
-        const wrist = add(add(add(SHOULDER_R, aim, f), left, l), gunUp, u)
+        const wrist = add(add(add(SHOULDER_R, direction, f), left, l), gunUp, u)
         if (Math.hypot(...sub(wrist, SHOULDER_R)) > REACH - 4) continue
-        const grip = leftGripDistance(wrist, aim, gunUp, foregrip, REACH - 4)
+        const hand = point ? gunFrame(wrist, aim) : freeHand
+        const grip = leftGripDistance(wrist, hand[0], hand[1], foregrip, REACH - 4)
         // Reach as far up the barrel as possible, keeping the hand near the shoulder.
         const score = grip === null ? -Infinity : grip - Math.abs(l) * 0.15
-        if (!best || score > best.score) best = { score, wrist }
+        if (!best || score > best.score) best = { score, wrist, hand }
     }
-    if (!best || best.score === -Infinity) return { right: solveGunArm({ point, dir, up }).rotations, left: null }
-    if (point) aim = norm(sub(point, best.wrist))
-    const hand = frame(aim, up)
+    if (!best || best.score === -Infinity) return { right: solveGunArm(aim).rotations, left: null }
+    const hand = best.hand
     const right = solveArm(SHOULDER_R, best.wrist, [-1, 0, -0.5], hand)
-    const grip = leftGripDistance(right.wrist, aim, hand[1], foregrip, REACH - 2)
-    if (grip === null) return { right: solveGunArm({ point, dir, up }).rotations, left: null }
-    const leftWrist = add(add(right.wrist, aim, grip), hand[1], foregrip[1])
+    const grip = leftGripDistance(right.wrist, hand[0], hand[1], foregrip, REACH - 2)
+    if (grip === null) return { right: solveGunArm(aim).rotations, left: null }
+    const leftWrist = add(add(right.wrist, hand[0], grip), hand[1], foregrip[1])
     return { right: right.rotations, left: solveArm(SHOULDER_L, leftWrist, [-1, 0, 0.5], hand).rotations }
 }
 
