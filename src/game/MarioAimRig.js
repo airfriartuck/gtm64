@@ -111,8 +111,10 @@ export const solveGunArm = ({ point, dir, up }) => {
 
 // Where the left hand can reach along a barrel running from `wrist` along
 // `aim`: the furthest point up to `grip` that's within `reach` of the left
-// shoulder, or null when it can't get past the right fist.
-const MIN_GRIP = 95
+// shoulder, or null when it can't get ahead of the right wrist. In the
+// squared-up stance it reaches the front of the receiver; mid-jump the body
+// can be turned so far that both hands end up on the grip.
+const MIN_GRIP = 30
 const leftGripDistance = (wrist, aim, up, [grip, under], reach) => {
     const q = sub(add(wrist, up, under), SHOULDER_L)
     const b = dot(q, aim), disc = b * b - dot(q, q) + reach * reach
@@ -124,8 +126,8 @@ const leftGripDistance = (wrist, aim, up, [grip, under], reach) => {
 // Right-wrist placements to try, in the aim frame (forward, left, up), from a
 // hand held out in front of the right shoulder to one tucked across the chest.
 const RIFLE_WRISTS = []
-for (let left = 0; left <= 120; left += 10) {
-    for (const forward of [70, 50, 30, 10]) for (const up of [-10, -30]) RIFLE_WRISTS.push([forward, left, up])
+for (let left = -40; left <= 160; left += 10) {
+    for (let forward = 110; forward >= -20; forward -= 10) for (const up of [10, -10, -30, -50]) RIFLE_WRISTS.push([forward, left, up])
 }
 
 // A two-handed gun: the right hand holds the grip and the left reaches along
@@ -140,7 +142,7 @@ export const solveTwoHanded = ({ point, dir, up }, foregrip) => {
         if (Math.hypot(...sub(wrist, SHOULDER_R)) > REACH - 4) continue
         const grip = leftGripDistance(wrist, aim, gunUp, foregrip, REACH - 4)
         // Reach as far up the barrel as possible, keeping the hand near the shoulder.
-        const score = grip === null ? -Infinity : grip - l * 0.15
+        const score = grip === null ? -Infinity : grip - Math.abs(l) * 0.15
         if (!best || score > best.score) best = { score, wrist }
     }
     if (!best || best.score === -Infinity) return { right: solveGunArm({ point, dir, up }).rotations, left: null }

@@ -453,11 +453,15 @@ test('Mario aims and fires through ordinary jumps and falls, turning his body bu
     assert.equal(mario.marioObj.gfx.angle[1], 0x4000)
     assert.equal(mario.faceAngle[1], 0, 'momentum keeps its direction')
 
-    // The torso, head and gun arm hold the aiming pose; the legs keep the jump.
+    // The jump plays as normal: only the arm channels are taken over for the gun.
     const pose = mario.marioObj.gfx.animInfo.curAnim
     assert.notEqual(pose, jumpAnim)
     assert.equal(pose.unk08, jumpAnim.unk08)
-    assert.equal(jumpAnim.values.length < pose.values.length, true)
+    for (let ch = 0; ch < jumpAnim.indices.length / 2; ch++) {
+        const part = Math.floor((ch - 3) / 3), arm = part >= 4 && part <= 11
+        if (!arm) assert.deepEqual([pose.indices[ch * 2], pose.indices[ch * 2 + 1]], [jumpAnim.indices[ch * 2], jumpAnim.indices[ch * 2 + 1]], `channel ${ch} untouched`)
+        else assert.equal(pose.indices[ch * 2], 1, `arm channel ${ch} rigged`)
+    }
 
     weapon.updateAirAim(mario, setAction, { ...held, buttonPressedB: true, buttonDownB: true })
     assert.deepEqual(sounds.splice(0), ['pistol'])
@@ -531,14 +535,15 @@ test('the gun arm points the barrel at the target, upright, in every aiming pose
     const { weapon, mario, r } = weaponRuntime()
     const M = r.load('engine/math_util.js')
     const { rigArms } = r.load('game/MarioAimRig.js')
-    const { pinParts, AIM_PARTS, AIR_AIM_PARTS } = r.load('game/MarioAimAnimation.js')
+    const { pinParts, AIM_PARTS } = r.load('game/MarioAimAnimation.js')
     const { gMarioAnimData: A } = r.load('actors/mario/marioAnimData.js')
     const punch = A[0x67]
     const poses = {
         standing: [rigArms(punch), [10]],
         strafing: [rigArms(pinParts(A[0x48], punch, 10, AIM_PARTS)), [0, 20, 40, 60]],
         sidestep: [rigArms(pinParts(A[0x7F], punch, 10, AIM_PARTS)), [0, 10, 20]],
-        jumping: [rigArms(pinParts(A[0x4D], punch, 10, AIR_AIM_PARTS)), [0, 5, 11]],
+        jumping: [rigArms(A[0x4D]), [0, 5, 11]],
+        'double jump': [rigArms(A[0x50]), [0, 3, 5]],
     }
     const camera = M.Mat4()
     M.mtxf_lookat(camera, [300, 400, -900], [0, 100, 0], 0)
@@ -611,4 +616,34 @@ test('two-handed guns put the left hand on the barrel ahead of the right', () =>
         }
     }
     console.log('left grips', JSON.stringify(grips))
+})
+
+test('mid-jump the jump animation plays and both hands stay on a two-handed gun', () => {
+    const { weapon, r } = weaponRuntime()
+    const M = r.load('engine/math_util.js')
+    const { rigArms } = r.load('game/MarioAimRig.js')
+    const { gMarioAnimData: A } = r.load('actors/mario/marioAnimData.js')
+    const { WEAPONS } = r.load('game/Weapons.js')
+    weapon.weaponState.index = WEAPONS.findIndex(w => w.id === 'shotgun')
+    const camera = M.Mat4()
+    M.mtxf_lookat(camera, [300, 400, -900], [0, 100, 0], 0)
+    const unit = v => { const l = Math.hypot(...v); return v.map(x => x / l) }
+    for (const [id, frames] of [[0x4D, [0, 2, 5, 8, 11]], [0x50, [0, 3]], [0x4C, [0, 4, 8]], [0x13, [0, 4, 8]]]) {
+        const rig = rigArms(A[id])
+        for (const frame of frames) {
+            weapon.weaponState.aimPoint = [300, 200, 2500]
+            const body = skeleton(M, rig, frame, [0, 0, 0], 0)
+            const torsoCam = M.Mat4()
+            M.mtxf_mul(torsoCam, body.parts[2], camera)
+            r.linker.GeoRenderer = { gCurAnimData: rig.values, gCurrAnimFrame: frame, gCurGraphNodeCamera: { matrixPtr: camera } }
+            weapon.geo_mario_aim_arms(1, {}, torsoCam)
+            body.arms()
+            const right = body.parts[11], left = body.parts[7]
+            const barrel = unit(right[0].slice(0, 3)), gunUp = unit(right[1].slice(0, 3))
+            const rel = left[3].slice(0, 3).map((v, i) => (v - right[3][i]) * 4)
+            const along = rel.reduce((s, v, i) => s + v * barrel[i], 0), height = rel.reduce((s, v, i) => s + v * gunUp[i], 0)
+            const off = Math.hypot(...rel.map((v, i) => v - barrel[i] * along - gunUp[i] * height))
+            assert.ok(along >= 30 && off < 3, `anim ${id} frame ${frame}: left hand ${along.toFixed(0)} along, ${off.toFixed(1)} off the gun`)
+        }
+    }
 })

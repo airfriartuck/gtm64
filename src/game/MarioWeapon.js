@@ -7,8 +7,7 @@ import { mario_gun_dls } from "../actors/mario_gun/model.inc"
 import { ACT_GUN_AIM, ACT_GROUP_MASK, ACT_GROUP_STATIONARY, ACT_GROUP_MOVING, ACT_FLAG_ALLOW_FIRST_PERSON,
     ACT_FLAG_INVULNERABLE, ACT_FLAG_SHORT_HITBOX, ACT_FLAG_RIDING_SHELL, ACT_FLAG_DIVING,
     ACT_FLAG_BUTT_OR_STOMACH_SLIDE, INPUT_OFF_FLOOR, INPUT_B_PRESSED, ACT_JUMP, ACT_DOUBLE_JUMP, ACT_FREEFALL,
-    ACT_LONG_JUMP, ACT_WALL_KICK_AIR, MARIO_ANIM_FIRST_PUNCH } from "./Mario"
-import { pinParts, AIR_AIM_PARTS, AIM_FRAME } from "./MarioAimAnimation"
+    ACT_LONG_JUMP, ACT_WALL_KICK_AIR } from "./Mario"
 import { rigArms, rigForValues, writeRotation, writeAnimated, solveGunArm, solveTwoHanded, LEFT_ARM, RIGHT_ARM } from "./MarioAimRig"
 import { int16 } from "../utils"
 import { play_gun_sound } from "../audio/external"
@@ -170,17 +169,13 @@ export const beginAirAim = (m, input = window.playerInput) => {
     if (canAimInAir(m, input)) m.input &= ~INPUT_B_PRESSED
 }
 
-// Jump animations with the torso, head and gun arm pinned to the aiming pose.
-const airPoses = new Map(), airPoseSources = new Map()
+// In the air the jump animation plays as normal; only the arms hold the gun.
+const airPoseSources = new Map()
 const pinAirPose = m => {
     const info = m.marioObj.gfx.animInfo
     if (!info.curAnim || airPoseSources.has(info.curAnim)) return
-    let pose = airPoses.get(info.curAnim)
-    if (!pose) {
-        pose = rigArms(pinParts(info.curAnim, m.animation.animList[MARIO_ANIM_FIRST_PUNCH], AIM_FRAME, AIR_AIM_PARTS))
-        airPoses.set(info.curAnim, pose)
-        airPoseSources.set(pose, info.curAnim)
-    }
+    const pose = rigArms(info.curAnim)
+    airPoseSources.set(pose, info.curAnim)
     info.curAnim = pose
 }
 const unpinAirPose = m => {
