@@ -6,7 +6,10 @@ import { INTERACT_BOUNCE_TOP, INTERACT_BOUNCE_TOP2, INTERACT_HIT_FROM_BELOW, INT
 import { mario_gun_dls } from "../actors/mario_gun/model.inc"
 import { ACT_GUN_AIM, ACT_GROUP_MASK, ACT_GROUP_STATIONARY, ACT_GROUP_MOVING, ACT_FLAG_ALLOW_FIRST_PERSON,
     ACT_FLAG_INVULNERABLE, ACT_FLAG_SHORT_HITBOX, ACT_FLAG_RIDING_SHELL, ACT_FLAG_DIVING,
-    ACT_FLAG_BUTT_OR_STOMACH_SLIDE, INPUT_OFF_FLOOR } from "./Mario"
+    ACT_FLAG_BUTT_OR_STOMACH_SLIDE, INPUT_OFF_FLOOR, INPUT_B_PRESSED, ACT_JUMP, ACT_DOUBLE_JUMP, ACT_FREEFALL,
+    ACT_LONG_JUMP, ACT_WALL_KICK_AIR, MARIO_ANIM_FIRST_PUNCH } from "./Mario"
+import { pinParts, AIR_AIM_PARTS, AIM_FRAME } from "./MarioAimAnimation"
+import { int16 } from "../utils"
 import { play_gun_sound } from "../audio/external"
 import * as Targeting from "./WeaponTargeting"
 import { WEAPONS, ENEMY_HEALTH, HEAVY_ENEMY_HEALTH, newAmmo, nextWeapon, pullTrigger, shotHits } from "./Weapons"
@@ -19,13 +22,20 @@ const ENEMY_INTERACTIONS = INTERACT_BOUNCE_TOP | INTERACT_BOUNCE_TOP2 | INTERACT
 const ENEMY_BEHAVIORS = ['bhvBobomb', 'bhvChuckya']
 const ENEMY_LISTS = [2, 4, 5] // OBJ_LIST_DESTRUCTIVE, OBJ_LIST_GENACTOR, OBJ_LIST_PUSHABLE
 
-export const weaponState = { index: 0, ammo: newAmmo(), target: null, flash: 0, hudFrames: 0 }
+export const weaponState = { index: 0, ammo: newAmmo(), target: null, flash: 0, hudFrames: 0, airAim: false, airYaw: 0 }
 export const currentWeapon = () => WEAPONS[weaponState.index]
+
+// Ordinary jumps and falls keep their SM64 physics while Mario aims. Flips
+// and the triple jump spin him too much to hold a gun steady. Read on use:
+// Mario.js isn't initialised when this module loads.
+const airAimActions = () => [ACT_JUMP, ACT_DOUBLE_JUMP, ACT_FREEFALL, ACT_LONG_JUMP, ACT_WALL_KICK_AIR]
+export const canAimInAir = (m, input = window.playerInput) =>
+    Boolean(input.buttonDownAim) && !m.heldObj && airAimActions().includes(m.action)
 
 // Derived from Mario's action so knockbacks and warps put the gun away too.
 export const isAiming = () => {
     const m = gLinker.LevelUpdate && gLinker.LevelUpdate.gMarioState
-    return Boolean(m && m.action === ACT_GUN_AIM)
+    return Boolean(m && (m.action === ACT_GUN_AIM || (weaponState.airAim && airAimActions().includes(m.action))))
 }
 
 const hasBehavior = (object, name) => Boolean(object.behavior) && object.behavior === gLinker.behaviors[name]
@@ -38,8 +48,9 @@ const maxHealth = object => (object.rawData[oInteractType] & INTERACT_BULLY) || 
 
 // Mario can draw from standing or walking, but not mid-slide, while knocked
 // back, crawling, riding a shell or carrying something.
-export const canStartAiming = (m, input = window.playerInput) => {
-    if (!input.buttonDownAim || m.action === ACT_GUN_AIM || m.heldObj || (m.input & INPUT_OFF_FLOOR)) return false
+// `landed` ignores the off-floor input left over from the frame Mario touched down.
+export const canStartAiming = (m, input = window.playerInput, landed = false) => {
+    if (!input.buttonDownAim || m.action === ACT_GUN_AIM || m.heldObj || (!landed && (m.input & INPUT_OFF_FLOOR))) return false
     const group = m.action & ACT_GROUP_MASK
     if (group === ACT_GROUP_STATIONARY) return Boolean(m.action & ACT_FLAG_ALLOW_FIRST_PERSON)
     return group === ACT_GROUP_MOVING && !(m.action & (ACT_FLAG_INVULNERABLE | ACT_FLAG_SHORT_HITBOX
@@ -102,10 +113,10 @@ const cameraYaw = camera => Targeting.yawTo(camera.pos, camera.focus)
 const losBlocked = (shooter, target) => Targeting.lineOfSightBlocked(gLinker.SurfaceCollision,
     [shooter.pos[0], shooter.pos[1] + 20, shooter.pos[2]], [target.pos[0], target.top, target.pos[2]])
 
-// Runs once per frame while Mario is in ACT_GUN_AIM. Picks or keeps a lock,
-// handles C-left / C-right target switching and the trigger (B), and returns
-// the yaw to face.
-export const updateWeaponAim = (m, input = window.playerInput) => {
+// Runs once per frame while Mario aims. Picks or keeps a lock, handles
+// C-left / C-right target switching and the trigger (B), and returns the yaw
+// to face. `facing` is where the gun points, for shots without a lock.
+export const updateWeaponAim = (m, input = window.playerInput, facing = m.faceAngle[1]) => {
     const state = weaponState
     const weapon = currentWeapon()
     const shooter = { pos: chest(m) }
@@ -133,7 +144,7 @@ export const updateWeaponAim = (m, input = window.playerInput) => {
     if (fired) {
         state.flash = 2
         play_gun_sound(weapon.id)
-        for (const hit of shotHits(shooter, m.faceAngle[1], target, candidates, weapon, losBlocked)) {
+        for (const hit of shotHits(shooter, facing, target, candidates, weapon, losBlocked)) {
             damageEnemy(hit.target.object, hit.damage)
             hit.target.health = hit.target.object.weaponHealth / maxHealth(hit.target.object)
         }
@@ -146,6 +157,56 @@ export const updateWeaponAim = (m, input = window.playerInput) => {
 export const stopWeaponAim = () => {
     weaponState.target = null
     weaponState.flash = 0
+}
+
+// Before Mario's action runs: B is the trigger while aiming in the air, so it
+// mustn't also jump kick or dive.
+export const beginAirAim = (m, input = window.playerInput) => {
+    if (canAimInAir(m, input)) m.input &= ~INPUT_B_PRESSED
+}
+
+// Jump animations with the torso, head and gun arm pinned to the aiming pose.
+const airPoses = new Map(), airPoseSources = new Map()
+const pinAirPose = m => {
+    const info = m.marioObj.gfx.animInfo
+    if (!info.curAnim || airPoseSources.has(info.curAnim)) return
+    let pose = airPoses.get(info.curAnim)
+    if (!pose) {
+        pose = pinParts(info.curAnim, m.animation.animList[MARIO_ANIM_FIRST_PUNCH], AIM_FRAME, AIR_AIM_PARTS)
+        airPoses.set(info.curAnim, pose)
+        airPoseSources.set(pose, info.curAnim)
+    }
+    info.curAnim = pose
+}
+const unpinAirPose = m => {
+    const info = m.marioObj.gfx.animInfo
+    if (airPoseSources.has(info.curAnim)) info.curAnim = airPoseSources.get(info.curAnim)
+}
+
+// After Mario's action runs: while he jumps or falls with the aim button held,
+// turn his body (not his momentum) to the target, hold the gun out and handle
+// the trigger. Landing with the button still held goes straight back to
+// aiming on the ground.
+export const updateAirAim = (m, setAction, input = window.playerInput) => {
+    const wasAiming = weaponState.airAim
+    weaponState.airAim = canAimInAir(m, input)
+    if (!weaponState.airAim) {
+        if (!wasAiming) return
+        unpinAirPose(m)
+        if (canStartAiming(m, input, true)) {
+            m.faceAngle[1] = weaponState.airYaw
+            setAction(m, ACT_GUN_AIM, 0)
+        } else if (m.action !== ACT_GUN_AIM) {
+            stopWeaponAim()
+        }
+        return
+    }
+    if (!wasAiming) weaponState.airYaw = m.faceAngle[1]
+    const aimYaw = updateWeaponAim(m, input, weaponState.airYaw)
+    const turn = int16(Math.round(aimYaw) - weaponState.airYaw)
+    weaponState.airYaw = int16(weaponState.airYaw + Math.max(-0x1800, Math.min(0x1800, turn)))
+    m.marioObj.gfx.angle[1] = weaponState.airYaw
+    pinAirPose(m)
 }
 
 // Mario's right-hand geo calls this; the gun only appears while aiming.

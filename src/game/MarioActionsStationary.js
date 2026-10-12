@@ -12,7 +12,7 @@ import {
 
 import { ACT_GUN_AIM, GROUND_STEP_LEFT_GROUND, MARIO_ANIM_FIRST_PUNCH, MARIO_ANIM_WALKING, MARIO_ANIM_SIDESTEP_LEFT,
     MARIO_ANIM_SIDESTEP_RIGHT, set_anim_to_frame } from "./Mario"
-import { pinParts, strafeDirection } from "./MarioAimAnimation"
+import { pinParts, strafeDirection, AIM_FRAME } from "./MarioAimAnimation"
 import { updateWeaponAim, stopWeaponAim } from "./MarioWeapon"
 import { sins, coss, int16 } from "../utils"
 
@@ -952,7 +952,6 @@ const check_common_stationary_cancels = (m) => {
 
 // Hold the aim button to draw the gun. Mario turns to the locked target (or
 // the camera's direction) and can strafe slowly without turning away.
-const AIM_FRAME = 10 // arm fully extended in the first punch
 
 // Strafing walks forward/back or sidesteps, with the gun arm held out. The
 // animation IDs are read on use: Mario.js isn't initialised when this loads.
@@ -983,8 +982,8 @@ const act_gun_aim = (m) => {
         stopWeaponAim()
         return set_mario_action(m, ACT_IDLE, 0)
     }
+    // Jumping keeps the gun out and the lock: Mario aims in the air.
     if (m.input & INPUT_A_PRESSED) {
-        stopWeaponAim()
         return set_jumping_action(m, ACT_JUMP, 0)
     }
     if (m.input & (INPUT_OFF_FLOOR | INPUT_ABOVE_SLIDE)) {

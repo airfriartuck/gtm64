@@ -10,6 +10,11 @@
 // pinned; the legs and the free left arm keep the walk's motion. The root's
 // translation also stays animated, so he still bobs as he steps.
 export const AIM_PARTS = [0, 1, 2, 3, 8, 9, 10, 11]
+// In the air only the torso, head and gun arm hold the pose, so the root and
+// hips still tuck and swing with the jump.
+export const AIR_AIM_PARTS = [2, 3, 8, 9, 10, 11]
+// The aiming pose is the first punch at this frame, with the arm fully extended.
+export const AIM_FRAME = 10
 const channel = (part, axis) => (3 + part * 3 + axis) * 2
 
 // SM64's ANIM_FLAG_FORWARD actually plays an animation backwards.

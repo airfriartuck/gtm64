@@ -30,7 +30,7 @@ import { int16, sins, coss } from "../utils"
 import * as MarioConstants from "../include/mario_constants"
 import { gAudioRandom } from "../audio/data"
 import { updateGardenCar } from "./GardenCar"
-import { canStartAiming } from "./MarioWeapon"
+import { canStartAiming, beginAirAim, updateAirAim } from "./MarioWeapon"
 
 import {
    SOUND_BANK_MOVING, SOUND_TERRAIN_WATER, SOUND_TERRAIN_SAND, SOUND_TERRAIN_SNOW,
@@ -2155,6 +2155,7 @@ export const execute_mario_action = () => {
         Interact.mario_process_interactions(LevelUpdate.gMarioState)
 
         if (canStartAiming(m)) set_mario_action(m, ACT_GUN_AIM, 0)
+        beginAirAim(m)
 
         let inLoop = 1
 
@@ -2191,6 +2192,8 @@ export const execute_mario_action = () => {
                 default: throw "unkown action group"
             }
         }
+
+        updateAirAim(m, set_mario_action)
 
         sink_mario_in_quicksand(LevelUpdate.gMarioState)
         squish_mario_model(LevelUpdate.gMarioState)

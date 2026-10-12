@@ -190,7 +190,11 @@ Andreas, he locks on to the enemy that is closest to where the camera is
 looking, weighing distance and angle, and skips enemies behind walls or hills.
 A marker above the target shows its health from green to red. While aiming, the
 stick strafes (Mario walks forward or back, or sidesteps, keeping the gun on the target), **C-left / C-right** (**J / L**) switch to the next enemy on
-that side, and jump cancels the aim. The targeting is ported from
+that side, and jump keeps the gun out. Mario can aim and fire through ordinary
+jumps, double jumps, long jumps, wall kicks and falls: his jump keeps its
+momentum while his body turns to the target, and holding the aim button as he
+lands goes straight back to aiming on the ground. Flips and the triple jump
+spin him too much to aim. The targeting is ported from
 [gta-reversed](https://github.com/gta-reversed/gta-reversed)
 (`CPlayerPed::EvaluateTarget` and related functions).
 

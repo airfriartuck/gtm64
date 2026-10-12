@@ -111,13 +111,16 @@ test('marker projection matches the camera and colours by health', () => {
 
 // MarioWeapon glue with the Mario/Interaction/geo modules replaced by their constants.
 const ACT_GUN_AIM = 0x0000023F, ACT_IDLE = 0x0C400201, ACT_WALKING = 0x04000440
-const ACT_BUTT_SLIDE = 0x00840452, ACT_JUMP = 0x03000880
+const ACT_BUTT_SLIDE = 0x00840452, ACT_JUMP = 0x03000880, ACT_DOUBLE_JUMP = 0x03000881, ACT_FREEFALL = 0x0100088C
+const ACT_LONG_JUMP = 0x03000888, ACT_WALL_KICK_AIR = 0x03000886, ACT_BACKFLIP = 0x01000883, ACT_GROUND_POUND = 0x008008A9
+const ACT_JUMP_LAND = 0x04000470, ACT_BACKWARD_AIR_KB = 0x010208B0, INPUT_B_PRESSED = 0x2000
 function weaponRuntime() {
     const r = runtime({
         'game/Mario.js': { ACT_GUN_AIM, ACT_GROUP_MASK: 0x1C0, ACT_GROUP_STATIONARY: 0, ACT_GROUP_MOVING: 0x40,
             ACT_FLAG_ALLOW_FIRST_PERSON: 1 << 26, ACT_FLAG_INVULNERABLE: 1 << 17, ACT_FLAG_SHORT_HITBOX: 1 << 15,
             ACT_FLAG_RIDING_SHELL: 1 << 16, ACT_FLAG_DIVING: 1 << 19, ACT_FLAG_BUTT_OR_STOMACH_SLIDE: 1 << 18,
-            INPUT_OFF_FLOOR: 4 },
+            INPUT_OFF_FLOOR: 4, INPUT_B_PRESSED, ACT_JUMP, ACT_DOUBLE_JUMP, ACT_FREEFALL, ACT_LONG_JUMP,
+            ACT_WALL_KICK_AIR, MARIO_ANIM_FIRST_PUNCH: 0x67 },
         'game/Interaction.js': { INTERACT_BOUNCE_TOP: 1 << 15, INTERACT_BOUNCE_TOP2: 1 << 20,
             INTERACT_HIT_FROM_BELOW: 1 << 22, INTERACT_KOOPA: 1 << 7, INTERACT_BULLY: 1 << 17, INTERACT_MR_BLIZZARD: 1 << 21,
             ATTACK_KICK_OR_TRIP: 2, INT_STATUS_INTERACTED: 1 << 15, INT_STATUS_WAS_ATTACKED: 1 << 14 },
@@ -417,4 +420,83 @@ test('shots, reloads, dry fire and switching each make their sound', () => {
     weapon.updateWeaponAim(mario, fire)
     while (weapon.weaponState.ammo[2].reload > 0) weapon.updateWeaponAim(mario, {})
     assert.deepEqual(sounds.splice(0), ['shotgun'])
+})
+
+test('Mario aims and fires through ordinary jumps and falls, turning his body but not his momentum', () => {
+    const { weapon, add, object, mario, sounds, r } = weaponRuntime()
+    const { gMarioAnimData } = r.load('actors/mario/marioAnimData.js')
+    const jumpAnim = gMarioAnimData[0x4D]
+    mario.animation = { animList: gMarioAnimData }
+    mario.marioObj.gfx = { angle: [0, 0, 0], animInfo: { animID: 0x4D, curAnim: jumpAnim } }
+    const goomba = add(5, object(1000, 0, 1 << 15))   // off to Mario's left
+    const held = { buttonDownAim: true }
+    const setAction = (m, action) => { m.action = action }
+
+    // B is the trigger, so it can't also kick or dive.
+    mario.action = ACT_JUMP
+    mario.input = INPUT_B_PRESSED | 1
+    weapon.beginAirAim(mario, held)
+    assert.equal(mario.input, 1)
+    mario.input = 0
+    weapon.beginAirAim(mario, {})
+    mario.input = INPUT_B_PRESSED
+    weapon.beginAirAim(mario, {})
+    assert.equal(mario.input, INPUT_B_PRESSED, 'B still kicks without the aim button')
+    mario.input = 0
+
+    weapon.updateAirAim(mario, setAction, held)
+    assert.equal(weapon.isAiming(), true)
+    assert.equal(weapon.weaponState.target.object, goomba)
+    assert.equal(weapon.geo_mario_gun(1, { flags: 0 })[0], 'pistol', 'the gun shows mid-air')
+    assert.equal(mario.marioObj.gfx.angle[1], 0x1800, 'the body turns toward the target a step at a time')
+    for (let i = 0; i < 5; i++) weapon.updateAirAim(mario, setAction, held)
+    assert.equal(mario.marioObj.gfx.angle[1], 0x4000)
+    assert.equal(mario.faceAngle[1], 0, 'momentum keeps its direction')
+
+    // The torso, head and gun arm hold the aiming pose; the legs keep the jump.
+    const pose = mario.marioObj.gfx.animInfo.curAnim
+    assert.notEqual(pose, jumpAnim)
+    assert.equal(pose.unk08, jumpAnim.unk08)
+    assert.equal(jumpAnim.values.length < pose.values.length, true)
+
+    weapon.updateAirAim(mario, setAction, { ...held, buttonPressedB: true, buttonDownB: true })
+    assert.deepEqual(sounds.splice(0), ['pistol'])
+    assert.equal(goomba.weaponHealth, 75)
+
+    for (const action of [ACT_DOUBLE_JUMP, ACT_FREEFALL, ACT_LONG_JUMP, ACT_WALL_KICK_AIR]) {
+        mario.action = action
+        assert.equal(weapon.canAimInAir(mario, held), true)
+    }
+    for (const action of [ACT_BACKFLIP, ACT_GROUND_POUND, ACT_BACKWARD_AIR_KB]) {
+        mario.action = action
+        assert.equal(weapon.canAimInAir(mario, held), false)
+    }
+    mario.action = ACT_JUMP
+    mario.heldObj = {}
+    assert.equal(weapon.canAimInAir(mario, held), false, 'not while carrying something')
+    mario.heldObj = null
+
+    // Landing with the button held goes straight back to aiming, facing the target.
+    weapon.updateAirAim(mario, setAction, held)
+    mario.action = ACT_JUMP_LAND
+    mario.input = 4   // off-floor input left over from the landing frame
+    weapon.updateAirAim(mario, setAction, held)
+    assert.equal(mario.action, ACT_GUN_AIM)
+    assert.equal(mario.faceAngle[1], 0x4000)
+    assert.equal(mario.marioObj.gfx.animInfo.curAnim, jumpAnim, 'the jump animation is restored')
+    assert.equal(weapon.weaponState.target.object, goomba, 'the lock carries over')
+
+    // Releasing the button mid-air, or a knockback, puts the gun away.
+    mario.action = ACT_JUMP
+    weapon.updateAirAim(mario, setAction, held)
+    weapon.updateAirAim(mario, setAction, {})
+    assert.equal(weapon.isAiming(), false)
+    assert.equal(weapon.weaponState.target, null)
+    assert.equal(mario.marioObj.gfx.animInfo.curAnim, jumpAnim)
+    weapon.updateAirAim(mario, setAction, held)
+    mario.action = ACT_BACKWARD_AIR_KB
+    assert.equal(weapon.isAiming(), false)
+    weapon.updateAirAim(mario, setAction, held)
+    assert.equal(mario.action, ACT_BACKWARD_AIR_KB)
+    assert.equal(weapon.weaponState.target, null)
 })
