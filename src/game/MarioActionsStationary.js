@@ -10,7 +10,7 @@ import {
     stationary_ground_step, perform_ground_step
 } from "./MarioStep"
 
-import { ACT_GUN_AIM, ACT_SIDE_FLIP, ACT_LONG_JUMP, GROUND_STEP_LEFT_GROUND, MARIO_ANIM_FIRST_PUNCH, MARIO_ANIM_FIRST_PERSON, MARIO_ANIM_WALKING, MARIO_ANIM_SIDESTEP_LEFT,
+import { ACT_GUN_AIM, ACT_SIDE_FLIP, ACT_LONG_JUMP, GROUND_STEP_LEFT_GROUND, MARIO_ANIM_FIRST_PUNCH, MARIO_ANIM_FIRST_PERSON, MARIO_ANIM_WALKING, MARIO_ANIM_RUNNING, MARIO_ANIM_SIDESTEP_LEFT,
     MARIO_ANIM_SIDESTEP_RIGHT, set_anim_to_frame } from "./Mario"
 import { pinParts, strafeDirection, AIM_FRAME } from "./MarioAimAnimation"
 import { rigArms } from "./MarioAimRig"
@@ -952,17 +952,20 @@ const check_common_stationary_cancels = (m) => {
 }
 
 // Hold the aim button to draw the gun. Mario turns to the locked target (or
-// the camera's direction) and can strafe slowly without turning away.
+// the camera's direction) and can strafe at his running speed without turning away.
 
 // Aiming animations, built on first use with the arms rigged to the gun. For
 // one-handed guns Mario takes a bladed pistol stance, gun shoulder forward
 // (the punch's upper body); for two-handed guns he squares up so his left
-// hand can reach along the barrel. Strafing walks forward/back or sidesteps.
+// hand can reach along the barrel. Strafing walks or runs forward/back, or
+// sidesteps.
 // The animation IDs are read on use: Mario.js isn't initialised when this loads.
 const AIM_ANIMS = {
     stand: { id: 0x1000, base: () => MARIO_ANIM_FIRST_PUNCH, twoHandedBase: () => MARIO_ANIM_FIRST_PERSON },
     forward: { id: 0x1001, base: () => MARIO_ANIM_WALKING },
     backward: { id: 0x1002, base: () => MARIO_ANIM_WALKING, reverse: true },
+    runForward: { id: 0x1005, base: () => MARIO_ANIM_RUNNING },
+    runBackward: { id: 0x1006, base: () => MARIO_ANIM_RUNNING, reverse: true },
     left: { id: 0x1003, base: () => MARIO_ANIM_SIDESTEP_LEFT },
     right: { id: 0x1004, base: () => MARIO_ANIM_SIDESTEP_RIGHT },
 }
@@ -1028,7 +1031,8 @@ const act_gun_aim = (m) => {
     m.faceAngle[1] = int16(m.faceAngle[1] + Math.max(-0x1800, Math.min(0x1800, turn)))
 
     if (m.input & INPUT_NONZERO_ANALOG) {
-        const speed = Math.min(m.intendedMag, 32) / 32 * 8
+        // As fast as his run: SM64's walk heads toward intendedMag, up to 32.
+        const speed = Math.min(m.intendedMag, 32)
         m.vel[0] = sins(m.intendedYaw) * speed
         m.vel[2] = coss(m.intendedYaw) * speed
         m.forwardVel = 0
@@ -1036,8 +1040,12 @@ const act_gun_aim = (m) => {
             stopWeaponAim()
             return set_mario_action(m, ACT_FREEFALL, 0)
         }
-        // Step cadence follows strafing speed, like Mario's normal walk.
-        set_aim_animation(m, strafeDirection(m.intendedYaw, m.faceAngle[1]), Math.round(Math.max(0.5, speed / 3) * 0x10000))
+        // Step cadence follows strafing speed, and he runs rather than walks
+        // above 22, like Mario's normal walk (anim_and_audio_for_walk).
+        const direction = strafeDirection(m.intendedYaw, m.faceAngle[1])
+        const running = speed > 22 && (direction === 'forward' || direction === 'backward')
+        const name = running ? `run${direction[0].toUpperCase()}${direction.slice(1)}` : direction
+        set_aim_animation(m, name, Math.round(Math.max(1, speed / 4) * 0x10000))
         return false
     }
 
