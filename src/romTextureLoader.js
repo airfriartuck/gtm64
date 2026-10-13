@@ -1,4 +1,5 @@
 import * as IDB from "idb-keyval"
+import { requirementMet } from "./gameRequirements"
 var msgpack = require("msgpack-lite")
 import { assets } from "./assets"
 import { originalAudio, AUDIO_ROM_START, AUDIO_ROM_END } from "./audio/OriginalAudio"
@@ -2782,9 +2783,9 @@ const loadDataIntoGame = (data) => {
 
     document.getElementById('romSelect').hidden = true
     msgElement.hidden = true
-    msgElement.innerHTML = "Rom Asset Extraction Success - You may now start the game"
+    msgElement.innerHTML = "Rom Asset Extraction Success"
     msgElement.style = "color:#00ff00"
-    document.getElementById("startbutton").disabled = false
+    requirementMet('rom')
     loadedGameAssets = true
 }
 

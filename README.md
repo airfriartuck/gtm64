@@ -33,6 +33,20 @@ npm run start
 
 You should now be able to access the website with the game from a web browser by typing "localhost" into the address bar.
 
+## Game files you supply
+
+The game needs files from two games you own, neither of which can be hosted
+here:
+
+- **Super Mario 64** (US) as a `.z64` ROM, for the levels, textures and audio.
+- **Grand Theft Auto: San Andreas** for PlayStation 2 as a disc image (`.iso`),
+  for Mario's weapons. If your copy is in a `.7z` archive, extract the `.iso`
+  first.
+
+Select each on the start page. Only the few files the game uses are read from
+the disc image, nothing is uploaded, and the results are kept in the browser so
+you only do this once. **Start Game** unlocks when both are loaded.
+
 ## Audio
 
 Original Mario sound effects, voices, jingles and level music play from the

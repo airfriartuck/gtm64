@@ -9,6 +9,30 @@ import { getGardenCar } from './game/GardenCar'
 import { luigiCarDialogue } from './game/LuigiCarDialogue'
 import { getLuigiCompanion } from './game/LuigiCompanion'
 import { updateWeaponHud } from './game/MarioWeapon'
+import { checkForGtaAssets, loadGtaAssetsFromFile, onGtaAssetsLoaded } from './gta/gtaAssets'
+import { requirementMet, allRequirementsMet } from './gameRequirements'
+
+// The game also needs assets from the player's GTA San Andreas disc.
+onGtaAssetsLoaded(() => requirementMet('gta'))
+
+const gtaMessage = document.getElementById('gtaMessage')
+document.getElementById('gtaSelect').addEventListener('submit', async event => {
+    event.preventDefault()
+    const file = document.getElementById('gtaFile').files[0]
+    if (!file) return
+    gtaMessage.textContent = 'Reading GTA San Andreas assets...'
+    gtaMessage.style.color = 'yellow'
+    try {
+        await loadGtaAssetsFromFile(file)
+        document.getElementById('gtaSelect').hidden = true
+        gtaMessage.textContent = 'GTA San Andreas Asset Extraction Success'
+        gtaMessage.style.color = '#00ff00'
+    } catch (error) {
+        console.error(error)
+        gtaMessage.textContent = `GTA San Andreas Asset Extraction Fail: ${error.message}`
+        gtaMessage.style.color = 'red'
+    }
+})
 
 const send_display_list = (gfx_list) => { GFX.run(gfx_list) }
 
@@ -173,7 +197,7 @@ window.cheats = {
 }
 
 const startGame = async () => {
-    if (gameStarted) return
+    if (gameStarted || !allRequirementsMet()) return
     gameStarted = true
     originalAudio.openingMusic = document.getElementById('mapSelect').value === '16' ? SEQ_MENU_TITLE_SCREEN : 0
 
@@ -233,17 +257,15 @@ window.onload = () => {
         window.debugMarioPosZ = parseFloat(pos[3])
     }
 
-    checkForRom().then((data) => {
-        if (data) {
-            if (url.searchParams.get("autostart")) {
-                if (url.searchParams.get("fullscreen")) {
-                    window.fullWindowMode = true
-                }
-                startGame()
+    document.getElementById("startbutton").disabled = true
+    Promise.all([checkForRom(), checkForGtaAssets().catch(error => { console.error(error); return false })]).then(([rom, gta]) => {
+        document.getElementById("rom").hidden = rom
+        document.getElementById("gta").hidden = gta
+        if (rom && gta && url.searchParams.get("autostart")) {
+            if (url.searchParams.get("fullscreen")) {
+                window.fullWindowMode = true
             }
-        } else {
-            document.getElementById("rom").hidden = false
-            document.getElementById("startbutton").disabled = true
+            startGame()
         }
     })
 
