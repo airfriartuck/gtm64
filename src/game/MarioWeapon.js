@@ -32,6 +32,11 @@ const COMPANION_LISTS = [8] // OBJ_LIST_DEFAULT
 export const weaponState = { index: 0, ammo: newAmmo(), target: null, aimTarget: null, aimYaw: 0, flash: 0, hudFrames: 0, airAim: false, airYaw: 0,
     airAimYaw: 0, airGfx: null, aimPoint: null, aimDir: [0, 0, 1] }
 export const currentWeapon = () => WEAPONS[weaponState.index]
+// Two-handed guns are shouldered rifle-style: Mario turns his right side away
+// so his left side leads toward the target, and his arms bring the barrel
+// across to it. The target sits this far to the left of where his body faces.
+const RIFLE_STANCE_YAW = 0x2AAA // 60°
+export const aimStanceYaw = () => currentWeapon().foregrip ? RIFLE_STANCE_YAW : 0
 export const weaponEffects = createWeaponEffects()
 let effectsArea
 
@@ -216,7 +221,8 @@ export const stopWeaponAim = () => {
 // takes Mario wherever it goes.
 export const startJumpAim = m => {
     weaponState.airAim = true
-    weaponState.airYaw = weaponState.airAimYaw = m.faceAngle[1]
+    weaponState.airYaw = m.faceAngle[1]
+    weaponState.airAimYaw = int16(m.faceAngle[1] + aimStanceYaw())
     weaponState.airGfx = null
 }
 
@@ -261,7 +267,7 @@ export const updateAirAim = (m, setAction, input = window.playerInput) => {
     }
     const state = weaponState
     if (!wasAiming) startJumpAim(m)
-    const turn = int16(Math.round(state.airAimYaw) - state.airYaw)
+    const turn = int16(Math.round(state.airAimYaw) - aimStanceYaw() - state.airYaw)
     state.airYaw = int16(state.airYaw + Math.max(-0x1800, Math.min(0x1800, turn)))
     // Turn the body to the target on top of the facing the jump gives it (a
     // side flip faces backwards), unless the action left our last yaw in place.
@@ -272,7 +278,7 @@ export const updateAirAim = (m, setAction, input = window.playerInput) => {
     pinAirPose(m)
     const info = gfx.animInfo
     const body = torsoInWorld(info.curAnim, info.animFrame, m.pos, gfx.angle)
-    state.airAimYaw = updateWeaponAim(m, input, state.airYaw, body)
+    state.airAimYaw = updateWeaponAim(m, input, int16(state.airYaw + aimStanceYaw()), body)
 }
 
 // Express a camera-space point or direction in the space of a rendered part.

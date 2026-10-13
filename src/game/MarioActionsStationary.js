@@ -14,7 +14,7 @@ import { ACT_GUN_AIM, ACT_SIDE_FLIP, ACT_LONG_JUMP, GROUND_STEP_LEFT_GROUND, MAR
     MARIO_ANIM_SIDESTEP_RIGHT, set_anim_to_frame } from "./Mario"
 import { pinParts, strafeDirection, AIM_FRAME } from "./MarioAimAnimation"
 import { rigArms } from "./MarioAimRig"
-import { updateWeaponAim, stopWeaponAim, currentWeapon, startJumpAim } from "./MarioWeapon"
+import { updateWeaponAim, stopWeaponAim, currentWeapon, startJumpAim, aimStanceYaw } from "./MarioWeapon"
 import { sins, coss, int16 } from "../utils"
 
 import {
@@ -1026,8 +1026,10 @@ const act_gun_aim = (m) => {
         return set_mario_action(m, m.input & INPUT_OFF_FLOOR ? ACT_FREEFALL : ACT_BEGIN_SLIDING, 0)
     }
 
-    const aimYaw = updateWeaponAim(m)
-    const turn = int16(Math.round(aimYaw) - m.faceAngle[1])
+    // With a two-handed gun his body turns so his left side leads.
+    const stance = aimStanceYaw()
+    const aimYaw = updateWeaponAim(m, window.playerInput, int16(m.faceAngle[1] + stance))
+    const turn = int16(Math.round(aimYaw) - stance - m.faceAngle[1])
     m.faceAngle[1] = int16(m.faceAngle[1] + Math.max(-0x1800, Math.min(0x1800, turn)))
 
     if (m.input & INPUT_NONZERO_ANALOG) {

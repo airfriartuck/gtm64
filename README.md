@@ -244,8 +244,9 @@ moment after switching.
 
 Mario's arms are solved each frame so the barrel points at the target in any
 pose. He holds the pistol, Desert Eagle and Micro SMG in one hand from a bladed
-stance, and squares up to hold the shotgun, M4 and sniper rifle with both hands,
-as in SA.
+stance. The shotgun, M4 and sniper rifle are shouldered with both hands, rifle
+style: he turns 60° so his left side leads toward the target, the left hand
+reaching along the barrel.
 
 Each gun has its own sound: the ROM has no gunfire, so shots are synthesized
 from a filtered noise crack, a low thump and, for heavy guns, an echo. The
