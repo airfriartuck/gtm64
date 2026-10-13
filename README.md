@@ -60,7 +60,7 @@ following Super Mario 3D All-Stars:
 | Switch Pro Controller | Action |
 | --- | --- |
 | Left stick | Move |
-| Right stick | Camera (C buttons) |
+| Right stick | Turn the camera around Mario / raise and lower it |
 | A | Jump |
 | B | Punch, kick and fire |
 | ZL | Crouch (N64 Z) |
@@ -68,6 +68,11 @@ following Super Mario 3D All-Stars:
 | + | Start / pause |
 | ZR | Aim |
 | L | Next gun |
+
+The right stick turns the camera freely, including on courses like Bob-omb
+Battlefield that originally use a camera fixed on the course's center. Once you
+turn it, the camera stays where you put it while Mario stands still instead of
+swinging back behind him.
 
 Buttons are read by position in the browser's standard gamepad layout, so
 other controllers work with the same layout: the bottom face button is B and
