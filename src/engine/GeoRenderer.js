@@ -159,6 +159,7 @@ class GeoRenderer {
             this.gCurGraphNodeCamera = node
             node.matrixPtr = this.gMatStack[this.gMatStackIndex]
             this.geo_process_node_and_siblings(node.children)
+            if (gLinker.MarioWeapon) gLinker.MarioWeapon.renderWeaponEffects(this)
             this.gCurGraphNodeCamera = null
         }
         this.gMatStackIndex--

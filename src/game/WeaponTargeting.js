@@ -1,13 +1,12 @@
-// Weapon lock-on targeting, ported from GTA San Andreas (gta-reversed:
-// CPlayerPed::EvaluateTarget, FindTargetPriority, DoesTargetHaveToBeBroken).
-// FindWeaponLockOnTarget / FindNextWeaponLockOnTarget are still unreversed
-// there, so their outer loops follow the GTA III / Vice City versions that SA
-// grew from. Angles here are SM64 yaw units: 0x10000 per turn, 0 faces +Z.
+// Weapon lock-on targeting with GTA-style reach, line-of-sight and target
+// switching checks, adapted to choose Mario's nearest eligible enemy.
+// Angles here are SM64 yaw units: 0x10000 per turn, 0 faces +Z.
 
 // GTA works in metres; Mario is ~160 units tall, so 100 units ≈ 1 m.
 export const UNITS_PER_METRE = 100
-// PLAYER_MAX_TARGET_VIEW_ANGLE (0x8D243C): beyond this, priority drops to zero.
-export const MAX_TARGET_VIEW_ANGLE = 140
+// Acquire enemies in front of the aim direction; a held lock can keep tracking
+// one that moves behind Mario until it is otherwise no longer reachable.
+export const MAX_TARGET_VIEW_ANGLE = 90
 // CanIKReachThisTarget: Mario can't bend his arm further up or down than this.
 export const MAX_AIM_PITCH = 60
 
@@ -19,9 +18,8 @@ export const yawTo = (from, to) => Math.atan2(to[0] - from[0], to[2] - from[2]) 
 // Signed angle in degrees, positive when the target is to the shooter's left.
 export const angleOffAim = (from, to, aimYaw) => wrapDegrees(toDegrees(yawTo(from, to) - aimYaw))
 
-// FindTargetPriority. SM64 enemies don't have GTA's ped tasks, so a flagged
-// target keeps the 1.0 tier and everything else is an ordinary hostile (0.1).
-export const targetPriority = target => target.priority || 0.1
+const targetDistance = (shooter, target) => Math.hypot(...target.pos.map((value, axis) => value - shooter.pos[axis]))
+const inAimCone = angle => Math.abs(angle) < MAX_TARGET_VIEW_ANGLE
 
 // DoesTargetHaveToBeBroken: the lock is dropped when the target vanishes, moves
 // out of weapon range, or sits where Mario's arm (GTA: IK chain) can't point.
@@ -35,25 +33,23 @@ export const targetHasToBeBroken = (shooter, target, weapon) => {
     return pitch > MAX_AIM_PITCH && Math.abs(dy) > 50
 }
 
-// EvaluateTarget: GTA's score is priority × view-angle falloff, divided by the
-// fourth root of distance so a near target off to the side can beat a far one
-// straight ahead.
+// Distance determines the initial lock. View angle only breaks equal-distance
+// ties, so an enemy beside the crosshair cannot lose to a farther enemy ahead.
 export const evaluateTarget = (shooter, target, best, weapon, aimYaw, losBlocked) => {
-    const distance = Math.hypot(...target.pos.map((v, i) => v - shooter.pos[i]))
-    if (distance > weapon.range || targetHasToBeBroken(shooter, target, weapon)) return
+    if (targetHasToBeBroken(shooter, target, weapon)) return
     const angle = Math.abs(angleOffAim(shooter.pos, target.pos, aimYaw))
-    let viewAngleMultiplier = 1 - angle / MAX_TARGET_VIEW_ANGLE
-    const metres = distance / UNITS_PER_METRE
-    if (metres > 1) viewAngleMultiplier /= Math.sqrt(Math.sqrt(metres))
-    const score = targetPriority(target) * viewAngleMultiplier
-    if (score > best.score && !losBlocked(shooter, target)) {
+    const distance = targetDistance(shooter, target)
+    if (!inAimCone(angle) || distance > best.distance
+        || (distance === best.distance && angle >= best.angle)) return
+    if (!losBlocked(shooter, target)) {
         best.target = target
-        best.score = score
+        best.distance = distance
+        best.angle = angle
     }
 }
 
 export const findLockOnTarget = (shooter, candidates, weapon, aimYaw, losBlocked) => {
-    const best = { target: null, score: 0 }
+    const best = { target: null, distance: Infinity, angle: Infinity }
     for (const target of candidates) evaluateTarget(shooter, target, best, weapon, aimYaw, losBlocked)
     return best.target
 }
@@ -62,16 +58,18 @@ export const findLockOnTarget = (shooter, candidates, weapon, aimYaw, losBlocked
 // side of the current one, so flicking left/right steps through enemies in order.
 export const findNextLockOnTarget = (shooter, current, candidates, weapon, toLeft, losBlocked) => {
     const currentYaw = yawTo(shooter.pos, current.pos)
-    let next = null, closeness = -Infinity
+    let next = null, closestAngle = Infinity, closestDistance = Infinity
     for (const target of candidates) {
         if (target === current) continue
-        const distance = Math.hypot(...target.pos.map((v, i) => v - shooter.pos[i]))
-        if (distance > weapon.range || targetHasToBeBroken(shooter, target, weapon)) continue
+        if (targetHasToBeBroken(shooter, target, weapon)) continue
         const angle = angleOffAim(shooter.pos, target.pos, currentYaw)
-        if (toLeft ? angle <= 0 : angle >= 0) continue
-        if (-Math.abs(angle) > closeness && !losBlocked(shooter, target)) {
+        if (!inAimCone(angle) || (toLeft ? angle <= 0 : angle >= 0)) continue
+        const offset = Math.abs(angle), distance = targetDistance(shooter, target)
+        if ((offset < closestAngle || (offset === closestAngle && distance < closestDistance))
+            && !losBlocked(shooter, target)) {
             next = target
-            closeness = -Math.abs(angle)
+            closestAngle = offset
+            closestDistance = distance
         }
     }
     return next

@@ -13,6 +13,10 @@ const distance = (a, b) => Math.hypot(...a.map((value, i) => value - b[i]))
 const flatDistance = (a, b) => Math.hypot(a[0] - b[0], a[2] - b[2])
 const wrap = angle => ((angle + 32768) % 65536 + 65536) % 65536 - 32768
 const yawTo = (from, to) => Math.atan2(to[0] - from[0], to[2] - from[2]) * 32768 / Math.PI
+let companion, companionArea
+
+export const getLuigiCompanion = () => companion && (companion.activeFlags & 1) && !companion.weaponDefeated
+    && companionArea === (gLinker.Area && gLinker.Area.gCurrentArea) ? companion : null
 
 // The Mustang's front passenger seat in car space (+Z is the nose, +X the
 // driver's side), for Luigi's origin in his seated pose.
@@ -276,6 +280,9 @@ const setAnimation = (info, anim, frame, speed) => {
 
 export const bhv_luigi_companion_loop = () => {
     const object = gLinker.ObjectListProcessor.gCurrentObject
+    if (object.weaponDefeated || !(object.activeFlags & 1)) return
+    companion = object
+    companionArea = gLinker.Area && gLinker.Area.gCurrentArea
     const m = gLinker.LevelUpdate.gMarioState
     if (!m || !m.marioObj || !m.action) return
     if (!object.luigi) object.luigi = {

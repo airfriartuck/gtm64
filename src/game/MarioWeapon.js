@@ -1,6 +1,6 @@
 import { oPosX, oPosY, oPosZ, oInteractType, oInteractStatus, oAction, BOBOMB_ACT_EXPLODE } from "../include/object_constants"
-import { GRAPH_RENDER_ACTIVE, GRAPH_RENDER_INVISIBLE } from "../engine/graph_node"
-import { LAYER_OPAQUE } from "../engine/GeoLayout"
+import { GEO_CONTEXT_RENDER, GRAPH_RENDER_ACTIVE, GRAPH_RENDER_INVISIBLE } from "../engine/graph_node"
+import { LAYER_OPAQUE, LAYER_TRANSPARENT } from "../engine/GeoLayout"
 import { INTERACT_BOUNCE_TOP, INTERACT_BOUNCE_TOP2, INTERACT_HIT_FROM_BELOW, INTERACT_KOOPA,
     INTERACT_BULLY, INTERACT_MR_BLIZZARD, ATTACK_KICK_OR_TRIP, INT_STATUS_INTERACTED, INT_STATUS_WAS_ATTACKED } from "./Interaction"
 import { mario_gun_dls } from "../actors/mario_gun/model.inc"
@@ -16,18 +16,24 @@ import { int16 } from "../utils"
 import { play_gun_sound } from "../audio/external"
 import * as Targeting from "./WeaponTargeting"
 import { WEAPONS, ENEMY_HEALTH, HEAVY_ENEMY_HEALTH, newAmmo, nextWeapon, pullTrigger, shotHits } from "./Weapons"
+import { createWeaponEffects, queueWeaponShot, tickWeaponEffects, captureWeaponMuzzle,
+    weaponEffectsDisplayList } from "./WeaponEffects"
+import { beginWeaponDefeat, updateWeaponDefeat as updateDefeat } from "./WeaponDefeat"
 
-// Objects Mario can attack that also fight back. Hazards (flames, Amps) and
-// passive objects are left out so the lock always lands on an enemy.
+// Objects Mario can attack that also fight back take precedence over Luigi's
+// companion fallback. Hazards (flames, Amps) and other passive objects stay out.
 const ENEMY_INTERACTIONS = INTERACT_BOUNCE_TOP | INTERACT_BOUNCE_TOP2 | INTERACT_HIT_FROM_BELOW
     | INTERACT_KOOPA | INTERACT_BULLY | INTERACT_MR_BLIZZARD
 // Bob-ombs and Chuckyas interact as grabbable objects, so name them directly.
 const ENEMY_BEHAVIORS = ['bhvBobomb', 'bhvChuckya']
 const ENEMY_LISTS = [2, 4, 5] // OBJ_LIST_DESTRUCTIVE, OBJ_LIST_GENACTOR, OBJ_LIST_PUSHABLE
+const COMPANION_LISTS = [8] // OBJ_LIST_DEFAULT
 
-export const weaponState = { index: 0, ammo: newAmmo(), target: null, flash: 0, hudFrames: 0, airAim: false, airYaw: 0,
+export const weaponState = { index: 0, ammo: newAmmo(), target: null, aimTarget: null, aimYaw: 0, flash: 0, hudFrames: 0, airAim: false, airYaw: 0,
     airAimYaw: 0, airGfx: null, aimPoint: null, aimDir: [0, 0, 1] }
 export const currentWeapon = () => WEAPONS[weaponState.index]
+export const weaponEffects = createWeaponEffects()
+let effectsArea
 
 // Every jump keeps its SM64 physics while Mario aims, and so do the landings
 // between them, so double and triple jumps still chain. Read on use:
@@ -51,6 +57,9 @@ const hasBehavior = (object, name) => Boolean(object.behavior) && object.behavio
 const isEnemy = object => Boolean(object.activeFlags & 1) && !object.weaponDefeated
     && (Boolean(object.rawData[oInteractType] & ENEMY_INTERACTIONS) || ENEMY_BEHAVIORS.some(name => hasBehavior(object, name)))
 
+const isCompanion = object => Boolean(object.activeFlags & 1) && !object.weaponDefeated
+    && hasBehavior(object, 'bhvLuigiCompanion')
+
 const maxHealth = object => (object.rawData[oInteractType] & INTERACT_BULLY) || hasBehavior(object, 'bhvChuckya')
     ? HEAVY_ENEMY_HEALTH : ENEMY_HEALTH
 
@@ -68,54 +77,59 @@ export const canStartAiming = (m, input = window.playerInput, landed = false) =>
 }
 
 const chest = m => [m.pos[0], m.pos[1] + 100, m.pos[2]]
+const targetHeight = object => hasBehavior(object, 'bhvLuigiCompanion') ? 160 : (object.hitboxHeight || 100)
 
-const asTarget = object => {
+const targetPosition = object => [object.rawData[oPosX],
+    object.rawData[oPosY] - (object.hitboxDownOffset || 0) + targetHeight(object) / 2,
+    object.rawData[oPosZ]]
+
+const asTarget = (object, companion = false) => {
     const gfx = object.gfx || {}
-    const height = object.hitboxHeight || 100
+    const height = targetHeight(object)
     const down = object.hitboxDownOffset || 0
     if (object.weaponHealth === undefined) object.weaponHealth = maxHealth(object)
     return {
         object,
-        pos: [object.rawData[oPosX], object.rawData[oPosY] - down + height / 2, object.rawData[oPosZ]],
+        pos: targetPosition(object),
         top: object.rawData[oPosY] - down + height,
         visible: Boolean(gfx.flags & GRAPH_RENDER_ACTIVE) && !(gfx.flags & GRAPH_RENDER_INVISIBLE),
         health: object.weaponHealth / maxHealth(object),
+        companion,
     }
 }
 
-export const collectEnemies = lists => {
+const collectTargets = (lists, indices, predicate, companion = false) => {
     const targets = []
-    for (const index of ENEMY_LISTS) {
+    for (const index of indices) {
         const head = lists[index]
         for (let object = head.next; object && object !== head; object = object.next) {
-            // Enemies that shrug off the final blow (a Bully just gets pushed back)
-            // become targets again with full health.
-            if (object.weaponDefeated && (object.activeFlags & 1) && --object.weaponRecover <= 0) {
-                object.weaponDefeated = false
-                object.weaponHealth = maxHealth(object)
-            }
-            if (isEnemy(object)) targets.push(asTarget(object))
+            if (predicate(object)) targets.push(asTarget(object, companion))
         }
     }
     return targets
 }
 
-// Health runs out → finish the enemy the SM64 way: Bob-ombs blow up and
-// everything else takes a kick, which its own behavior handles (Goombas are
-// knocked into the air and defeated, Bullies are pushed back).
-const RECOVER_FRAMES = 90
-export const damageEnemy = (object, damage) => {
+export const collectEnemies = lists => collectTargets(lists, ENEMY_LISTS, isEnemy)
+export const collectCompanions = lists => collectTargets(lists, COMPANION_LISTS, isCompanion, true)
+
+// Bob-ombs explode, normal enemies take their native finishing kick, and
+// resistant enemies fall and stay down instead of resuming their attacks.
+export const damageEnemy = (object, damage, shooterPosition) => {
     if (object.weaponHealth === undefined) object.weaponHealth = maxHealth(object)
     object.weaponHealth = Math.max(0, object.weaponHealth - damage)
     if (object.weaponHealth > 0 || object.weaponDefeated) return false
     object.weaponDefeated = true
-    object.weaponRecover = RECOVER_FRAMES
-    if (hasBehavior(object, 'bhvBobomb')) object.rawData[oAction] = BOBOMB_ACT_EXPLODE
-    else object.rawData[oInteractStatus] = ATTACK_KICK_OR_TRIP | INT_STATUS_INTERACTED | INT_STATUS_WAS_ATTACKED
+    object.weaponExplodes = hasBehavior(object, 'bhvBobomb')
+    object.weaponBully = Boolean(object.rawData[oInteractType] & INTERACT_BULLY)
+    if (object.weaponExplodes) object.rawData[oAction] = BOBOMB_ACT_EXPLODE
+    else {
+        beginWeaponDefeat(object, shooterPosition, object.weaponBully || hasBehavior(object, 'bhvChuckya') || hasBehavior(object, 'bhvLuigiCompanion'))
+        object.rawData[oInteractStatus] = ATTACK_KICK_OR_TRIP | INT_STATUS_INTERACTED | INT_STATUS_WAS_ATTACKED
+    }
     return true
 }
 
-// The direction the camera looks, which is where GTA searches for a target.
+// The camera supplies the direction for free aim when Mario has no target.
 const cameraYaw = camera => Targeting.yawTo(camera.pos, camera.focus)
 
 // GTA checks neck to neck (LOSBlockedBetweenPeds), so a low lip of ground
@@ -127,20 +141,30 @@ const yawOf = v => Math.round(Math.atan2(v[0], v[2]) / Math.PI * 0x8000)
 
 // Runs once per frame while Mario aims. Picks or keeps a lock, handles
 // C-left / C-right target switching and the trigger (B), and returns the yaw
-// to face. `facing` is where the gun points, for shots without a lock.
+// to face. `facing` supplies the direction for initial lock acquisition.
 // Mid-jump `body` is Mario's torso (torsoInWorld): when a flip leaves the lock
 // somewhere his arms can't point, he aims and fires straight ahead of his chest.
 export const updateWeaponAim = (m, input = window.playerInput, facing = m.faceAngle[1], body = null) => {
+    // Every aiming pose uses normal hand scale for muzzle alignment.
+    if (m.marioBodyState) m.marioBodyState.punchState = 0
     const state = weaponState
     const weapon = currentWeapon()
     const shooter = { pos: chest(m) }
     const lakitu = gLinker.Camera.gLakituState
-    const candidates = collectEnemies(gLinker.ObjectListProcessor.gObjectLists)
-    let target = state.target && candidates.find(c => c.object === state.target.object)
-    if (target && Targeting.targetHasToBeBroken(shooter, target, weapon)) target = null
-    if (!target) target = Targeting.findLockOnTarget(shooter, candidates, weapon, cameraYaw(lakitu), losBlocked)
+    const lists = gLinker.ObjectListProcessor.gObjectLists
+    const candidates = collectEnemies(lists)
+    const companions = collectCompanions(lists)
+    const shotCandidates = [...candidates, ...companions]
+    let target = state.target && shotCandidates.find(c => c.object === state.target.object)
+    if (target && (Targeting.targetHasToBeBroken(shooter, target, weapon) || losBlocked(shooter, target))) target = null
+    // Enemies take precedence over a companion fallback, including when one
+    // becomes eligible while Mario is already tracking Luigi.
+    if (!target || target.companion) {
+        target = Targeting.findLockOnTarget(shooter, candidates, weapon, facing, losBlocked) || target
+    }
+    if (!target) target = Targeting.findLockOnTarget(shooter, companions, weapon, facing, losBlocked)
     if (target && (input.buttonPressedCl || input.buttonPressedCr)) {
-        target = Targeting.findNextLockOnTarget(shooter, target, candidates, weapon,
+        target = Targeting.findNextLockOnTarget(shooter, target, target.companion ? companions : candidates, weapon,
             Boolean(input.buttonPressedCl), losBlocked) || target
     }
     // Target switching owns the C-left / C-right press, not the camera.
@@ -148,8 +172,11 @@ export const updateWeaponAim = (m, input = window.playerInput, facing = m.faceAn
     state.target = target
     // Where the arms point the gun: at the lock if they can, else straight ahead.
     const lock = target && (!body || canPointAt(body, target.pos)) ? target : null
+    const aimYaw = target ? Targeting.yawTo(m.pos, target.pos) : cameraYaw(lakitu)
+    state.aimTarget = lock ? lock.object : null
+    state.aimYaw = aimYaw
     state.aimPoint = lock ? [...lock.pos] : null
-    state.aimDir = body ? body.forward : [Math.sin(facing / 0x8000 * Math.PI), 0, Math.cos(facing / 0x8000 * Math.PI)]
+    state.aimDir = body ? body.forward : [Math.sin(aimYaw / 0x8000 * Math.PI), 0, Math.cos(aimYaw / 0x8000 * Math.PI)]
 
     if (state.flash > 0) state.flash--
     const ammo = state.ammo[state.index]
@@ -165,19 +192,23 @@ export const updateWeaponAim = (m, input = window.playerInput, facing = m.faceAn
         // A shot straight ahead mid-flip goes where his chest faces, and one
         // into the sky or the ground hits nothing.
         const level = lock || !body || Math.abs(body.forward[1]) < Math.SQRT1_2
-        const shotYaw = lock || !body ? facing : yawOf(body.forward)
-        for (const hit of level ? shotHits(shooter, shotYaw, lock, candidates, weapon, losBlocked) : []) {
-            damageEnemy(hit.target.object, hit.damage)
+        const shotYaw = lock || !body ? aimYaw : yawOf(body.forward)
+        const hits = level ? shotHits(shooter, shotYaw, lock, shotCandidates, weapon, losBlocked) : []
+        effectsArea = gLinker.Area && gLinker.Area.gCurrentArea
+        queueWeaponShot(weaponEffects, weapon, hits)
+        for (const hit of hits) {
+            damageEnemy(hit.target.object, hit.damage, shooter.pos)
             hit.target.health = hit.target.object.weaponHealth / maxHealth(hit.target.object)
         }
         // A defeated enemy is finished; the next frame locks on to someone else.
         if (target && target.object.weaponDefeated) state.target = null
     }
-    return target ? Targeting.yawTo(m.pos, target.pos) : cameraYaw(lakitu)
+    return aimYaw
 }
 
 export const stopWeaponAim = () => {
     weaponState.target = null
+    weaponState.aimTarget = null
     weaponState.flash = 0
 }
 
@@ -218,12 +249,13 @@ export const updateAirAim = (m, setAction, input = window.playerInput) => {
     weaponState.airAim = canAimInAir(m, input)
     if (!weaponState.airAim) {
         if (!wasAiming) return
-        unpinAirPose(m)
         if (canStartAiming(m, input, true)) {
             m.faceAngle[1] = weaponState.airYaw
             setAction(m, ACT_GUN_AIM, 0)
-        } else if (m.action !== ACT_GUN_AIM) {
-            stopWeaponAim()
+            pinAirPose(m)
+        } else {
+            unpinAirPose(m)
+            if (m.action !== ACT_GUN_AIM) stopWeaponAim()
         }
         return
     }
@@ -256,15 +288,20 @@ const intoCamera = (camera, v, isPoint) => [0, 1, 2].map(j =>
 // aiming animation, solve the gun arm against the torso as it's being drawn.
 export const geo_mario_aim_arms = (callContext, node, torso) => {
     const renderer = gLinker.GeoRenderer
-    const rig = renderer && rigForValues(renderer.gCurAnimData)
+    const mario = gLinker.LevelUpdate && gLinker.LevelUpdate.gMarioState
+    if (callContext !== GEO_CONTEXT_RENDER || !isAiming() || !renderer || !renderer.gCurGraphNodeObject
+        || renderer.gCurGraphNodeObject.object !== mario.marioObj) return null
+    const rig = rigForValues(renderer.gCurAnimData)
     const camera = rig && renderer.gCurGraphNodeCamera && renderer.gCurGraphNodeCamera.matrixPtr
     if (!camera || !torso) return null
     const state = weaponState
     const toTorso = (v, isPoint) => intoPart(torso, intoCamera(camera, v, isPoint), isPoint)
     const aim = {
-        point: state.aimPoint && toTorso(state.aimPoint, true),
+        // The render follows live positions, including the frame of a lethal shot.
+        point: state.aimTarget ? toTorso(targetPosition(state.aimTarget), true) : state.aimPoint && toTorso(state.aimPoint, true),
         dir: toTorso(state.aimDir, false),
         up: toTorso([0, 1, 0], false),
+        muzzleHeight: mario_gun_dls[currentWeapon().id].muzzle[1],
     }
     const foregrip = currentWeapon().foregrip
     const arms = foregrip ? solveTwoHanded(aim, foregrip) : { right: solveGunArm(aim).rotations, left: null }
@@ -274,11 +311,34 @@ export const geo_mario_aim_arms = (callContext, node, torso) => {
 }
 
 // Mario's right-hand geo calls this; the gun only appears while aiming.
-export const geo_mario_gun = (callContext, node) => {
+export const geo_mario_gun = (callContext, node, matrix) => {
     node.flags = (LAYER_OPAQUE << 8) | (node.flags & 0xFF)
     if (!isAiming()) return null
+    const renderer = gLinker.GeoRenderer
+    const mario = gLinker.LevelUpdate.gMarioState
+    if (callContext !== GEO_CONTEXT_RENDER || !renderer || !renderer.gCurGraphNodeObject
+        || renderer.gCurGraphNodeObject.object !== mario.marioObj) return null
     const model = mario_gun_dls[currentWeapon().id]
+    if (callContext === GEO_CONTEXT_RENDER && matrix && renderer.gCurGraphNodeCamera) {
+        captureWeaponMuzzle(weaponEffects, matrix, renderer.gCurGraphNodeCamera.matrixPtr,
+            model.muzzle, gLinker.SurfaceCollision)
+    }
     return weaponState.flash > 0 ? model.flashDl : model.dl
+}
+
+export const updateWeaponDefeat = object => updateDefeat(object, gLinker.SurfaceCollision)
+
+// The camera calls this after drawing objects, once the hand geo has supplied
+// this frame's actual muzzle. Tracers remain at their shot's world position.
+export const renderWeaponEffects = renderer => {
+    const area = gLinker.Area && gLinker.Area.gCurrentArea
+    if (area !== effectsArea) {
+        weaponEffects.shots.length = weaponEffects.sparks.length = 0
+        return
+    }
+    const camera = renderer.gCurGraphNodeCamera
+    const list = camera && weaponEffectsDisplayList(weaponEffects, camera.pos)
+    if (list) renderer.geo_append_display_list(list, LAYER_TRANSPARENT)
 }
 
 let marker, panel
@@ -336,6 +396,7 @@ const updateWeaponPanel = canvas => {
 // Called once per rendered frame: weapon switching (R / right bumper), the
 // lock-on marker and the weapon panel.
 export const updateWeaponHud = (input = window.playerInput) => {
+    tickWeaponEffects(weaponEffects)
     if (!isAiming()) weaponState.target = null
     if (input.buttonPressedNextWeapon) {
         weaponState.index = nextWeapon(weaponState.index)
@@ -351,4 +412,4 @@ export const updateWeaponHud = (input = window.playerInput) => {
     updateWeaponPanel(canvas)
 }
 
-gLinker.MarioWeapon = { geo_mario_gun, geo_mario_aim_arms, weaponState }
+gLinker.MarioWeapon = { geo_mario_gun, geo_mario_aim_arms, weaponState, renderWeaponEffects, updateWeaponDefeat }

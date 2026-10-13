@@ -83,5 +83,5 @@ const flash = ([x, y]) => [
 ]
 
 export const mario_gun_dls = Object.fromEntries(Object.entries(guns).map(([id, gun]) =>
-    [id, { dl: displayList(gun.boxes), flashDl: displayList([...gun.boxes, ...flash(gun.muzzle)]) }]))
+    [id, { muzzle: gun.muzzle, dl: displayList(gun.boxes), flashDl: displayList([...gun.boxes, ...flash(gun.muzzle)]) }]))
 

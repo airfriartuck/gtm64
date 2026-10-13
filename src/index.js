@@ -7,6 +7,7 @@ import { originalAudio } from "./audio/OriginalAudio"
 import { SEQ_MENU_TITLE_SCREEN } from "./include/seq_ids"
 import { getGardenCar } from './game/GardenCar'
 import { luigiCarDialogue } from './game/LuigiCarDialogue'
+import { getLuigiCompanion } from './game/LuigiCompanion'
 import { updateWeaponHud } from './game/MarioWeapon'
 
 const send_display_list = (gfx_list) => { GFX.run(gfx_list) }
@@ -25,7 +26,7 @@ const produce_one_frame = () => {
     updateWeaponHud()
     try {
         originalAudio.update(gLinker.Area.gCurrentArea, gLinker.Area.gCurrLevelNum)
-        luigiCarDialogue.update(getGardenCar(), performance.now() / 1000, window.playerInput)
+        luigiCarDialogue.update(getLuigiCompanion() ? getGardenCar() : null, performance.now() / 1000, window.playerInput)
     } catch (error) {
         originalAudio.pause()
         originalAudio.engine = null
