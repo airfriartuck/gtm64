@@ -156,8 +156,9 @@ test('extracting Mario\'s guns from a GTA San Andreas disc image', { skip: !proc
     }
     const { weapons } = await extractGtaAssets(read)
     fs.closeSync(handle)
-    assert.deepEqual(Object.keys(weapons), Object.keys(GTA_WEAPON_MODELS))
-    for (const [id, weapon] of Object.entries(weapons)) {
+    assert.deepEqual(Object.keys(weapons), [...Object.keys(GTA_WEAPON_MODELS), 'fist'])
+    assert.equal(weapons.fist.icon.width, 64, 'the fist icon comes from HUD.TXD')
+    for (const [id, weapon] of Object.entries(weapons).filter(([id]) => id !== 'fist')) {
         assert.equal(weapon.icon.width, 64, id)
         assert.equal(weapon.icon.rgba[3], 0, `${id} icon has a transparent corner`)
         assert.ok(weapon.meshes.reduce((n, mesh) => n + mesh.triangles.length, 0) > 100, `${id} has a real model`)

@@ -9,7 +9,8 @@ import { ACT_GUN_AIM, ACT_GROUP_MASK, ACT_GROUP_STATIONARY, ACT_GROUP_MOVING, AC
     ACT_FLAG_BUTT_OR_STOMACH_SLIDE, INPUT_OFF_FLOOR, INPUT_B_PRESSED, ACT_JUMP, ACT_DOUBLE_JUMP, ACT_TRIPLE_JUMP,
     ACT_SPECIAL_TRIPLE_JUMP, ACT_BACKFLIP, ACT_SIDE_FLIP, ACT_LONG_JUMP, ACT_WALL_KICK_AIR, ACT_FREEFALL,
     ACT_TOP_OF_POLE_JUMP, ACT_STEEP_JUMP, ACT_JUMP_LAND, ACT_FREEFALL_LAND, ACT_DOUBLE_JUMP_LAND, ACT_SIDE_FLIP_LAND,
-    ACT_TRIPLE_JUMP_LAND, ACT_BACKFLIP_LAND, ACT_LONG_JUMP_LAND } from "./Mario"
+    ACT_TRIPLE_JUMP_LAND, ACT_BACKFLIP_LAND, ACT_LONG_JUMP_LAND, ACT_FLAG_SWIMMING, ACT_FLAG_HANGING,
+    ACT_FLAG_ON_POLE } from "./Mario"
 import { rigArms, rigForValues, writeRotation, writeAnimated, solveGunArm, solveTwoHanded, torsoInWorld, canPointAt,
     LEFT_ARM, RIGHT_ARM } from "./MarioAimRig"
 import { int16 } from "../utils"
@@ -49,12 +50,23 @@ const landingActions = () => [ACT_JUMP_LAND, ACT_FREEFALL_LAND, ACT_DOUBLE_JUMP_
     ACT_TRIPLE_JUMP_LAND, ACT_BACKFLIP_LAND, ACT_LONG_JUMP_LAND]
 const isJumpAction = m => airAimActions().includes(m.action) || (weaponState.airAim && landingActions().includes(m.action))
 export const canAimInAir = (m, input = window.playerInput) =>
-    Boolean(input.buttonDownAim) && !m.heldObj && isJumpAction(m)
+    Boolean(input.buttonDownAim) && !currentWeapon().melee && !m.heldObj && isJumpAction(m)
 
 // Derived from Mario's action so knockbacks and warps put the gun away too.
 export const isAiming = () => {
     const m = gLinker.LevelUpdate && gLinker.LevelUpdate.gMarioState
     return Boolean(m && (m.action === ACT_GUN_AIM || (weaponState.airAim && isJumpAction(m))))
+}
+
+// Mario carries his gun in his right hand at all times, as in GTA, unless his
+// hands are busy: carrying something, swimming, hanging, on a pole or in the car.
+export const isHoldingGun = () => {
+    const m = gLinker.LevelUpdate && gLinker.LevelUpdate.gMarioState
+    if (!m || currentWeapon().melee) return false
+    if (isAiming()) return true
+    const car = gLinker.GardenCar && gLinker.GardenCar.getGardenCar()
+    return !m.heldObj && !(m.action & (ACT_FLAG_SWIMMING | ACT_FLAG_HANGING | ACT_FLAG_ON_POLE))
+        && !(car && (car.driving || car.sequence))
 }
 
 const hasBehavior = (object, name) => Boolean(object.behavior) && object.behavior === gLinker.behaviors[name]
@@ -72,7 +84,8 @@ const maxHealth = object => (object.rawData[oInteractType] & INTERACT_BULLY) || 
 // back, crawling, riding a shell or carrying something.
 // `landed` ignores the off-floor input left over from the frame Mario touched down.
 export const canStartAiming = (m, input = window.playerInput, landed = false) => {
-    if (!input.buttonDownAim || m.action === ACT_GUN_AIM || m.heldObj || (!landed && (m.input & INPUT_OFF_FLOOR))) return false
+    if (!input.buttonDownAim || currentWeapon().melee || m.action === ACT_GUN_AIM || m.heldObj
+        || (!landed && (m.input & INPUT_OFF_FLOOR))) return false
     // Landing from an aimed jump stays a landing, so the next jump can chain.
     if (!landed && weaponState.airAim && landingActions().includes(m.action)) return false
     const group = m.action & ACT_GROUP_MASK
@@ -316,10 +329,10 @@ export const geo_mario_aim_arms = (callContext, node, torso) => {
     return null
 }
 
-// Mario's right-hand geo calls this; the gun only appears while aiming.
+// Mario's right-hand geo calls this to draw the gun he's holding.
 export const geo_mario_gun = (callContext, node, matrix) => {
     node.flags = (LAYER_OPAQUE << 8) | (node.flags & 0xFF)
-    if (!isAiming()) return null
+    if (!isHoldingGun()) return null
     const renderer = gLinker.GeoRenderer
     const mario = gLinker.LevelUpdate.gMarioState
     if (callContext !== GEO_CONTEXT_RENDER || !renderer || !renderer.gCurGraphNodeObject
@@ -413,7 +426,7 @@ const updateWeaponPanel = canvas => {
     const icon = panel.querySelector('img'), src = weaponIcons[weapon.id] || ''
     if (icon.getAttribute('src') !== src) icon.setAttribute('src', src)
     icon.hidden = !src
-    const ammoText = ammo.reload > 0 ? 'Reloading' : `${ammo.clip}-${weapon.clip}`
+    const ammoText = weapon.melee ? '' : ammo.reload > 0 ? 'Reloading' : `${ammo.clip}-${weapon.clip}`
     const nameText = weaponState.hudFrames > 0 || !src ? weapon.name : ''
     const ammoElement = panel.querySelector('[data-ammo]'), nameElement = panel.querySelector('[data-name]')
     if (ammoElement.textContent !== ammoText) ammoElement.textContent = ammoText
@@ -441,4 +454,4 @@ export const updateWeaponHud = (input = window.playerInput) => {
     updateWeaponPanel(canvas)
 }
 
-gLinker.MarioWeapon = { geo_mario_gun, geo_mario_aim_arms, weaponState, renderWeaponEffects, updateWeaponDefeat }
+gLinker.MarioWeapon = { geo_mario_gun, geo_mario_aim_arms, weaponState, renderWeaponEffects, updateWeaponDefeat, isHoldingGun }

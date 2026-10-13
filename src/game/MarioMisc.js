@@ -453,7 +453,10 @@ class MarioMisc {
         const bodyState = this.gBodyState
 
         if (callContext == GEO_CONTEXT_RENDER) {
-            if (bodyState.handState == MARIO_HAND_FISTS) {
+            // The right hand (the switch with no case count) grips Mario's gun.
+            if (node.numCases == 0 && gLinker.MarioWeapon && gLinker.MarioWeapon.isHoldingGun()) {
+                node.selectedCase = 0
+            } else if (bodyState.handState == MARIO_HAND_FISTS) {
                   // switch between fists (0) and open (1)
                 node.selectedCase = ((bodyState.action & ACT_FLAG_SWIMMING_OR_FLYING) != 0) ? 1 : 0
             } else {
@@ -493,6 +496,8 @@ class MarioMisc {
                 scaleNode.scale =
                     this.gMarioAttackScaleAnimation[node.parameter * 6 + (bodyState.punchState & 0x3F)]
                     / 10.0
+                // Punching with a gun in the right hand (0) doesn't grow the gun.
+                if (node.parameter == 0 && gLinker.MarioWeapon && gLinker.MarioWeapon.isHoldingGun()) scaleNode.scale = 1.0
             }
         }
         return null

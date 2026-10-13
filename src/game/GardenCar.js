@@ -220,3 +220,5 @@ export const updateGardenCar = (m, actions, canEnter) => {
     showHelp('Parked · E / B to get in')
     return false
 }
+
+gLinker.GardenCar = { getGardenCar }

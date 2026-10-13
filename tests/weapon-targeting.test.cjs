@@ -157,7 +157,8 @@ function weaponRuntime({ gunModels = false } = {}) {
             ACT_FLAG_RIDING_SHELL: 1 << 16, ACT_FLAG_DIVING: 1 << 19, ACT_FLAG_BUTT_OR_STOMACH_SLIDE: 1 << 18,
             INPUT_OFF_FLOOR: 4, INPUT_B_PRESSED, ACT_JUMP, ACT_DOUBLE_JUMP, ACT_FREEFALL, ACT_LONG_JUMP,
             ACT_WALL_KICK_AIR, ACT_TRIPLE_JUMP, ACT_SPECIAL_TRIPLE_JUMP, ACT_BACKFLIP, ACT_SIDE_FLIP,
-            ACT_TOP_OF_POLE_JUMP, ACT_STEEP_JUMP, ...LANDINGS },
+            ACT_TOP_OF_POLE_JUMP, ACT_STEEP_JUMP, ...LANDINGS,
+            ACT_FLAG_SWIMMING: 1 << 13, ACT_FLAG_ON_POLE: 1 << 20, ACT_FLAG_HANGING: 1 << 21 },
         'game/Interaction.js': { INTERACT_BOUNCE_TOP: 1 << 15, INTERACT_BOUNCE_TOP2: 1 << 20,
             INTERACT_HIT_FROM_BELOW: 1 << 22, INTERACT_KOOPA: 1 << 7, INTERACT_BULLY: 1 << 17, INTERACT_MR_BLIZZARD: 1 << 21,
             ATTACK_KICK_OR_TRIP: 2, INT_STATUS_INTERACTED: 1 << 15, INT_STATUS_WAS_ATTACKED: 1 << 14 },
@@ -229,7 +230,7 @@ test('aiming starts from standing or walking only, with the aim button held', ()
     assert.equal(weapon.canStartAiming(mario, held), false)
 })
 
-test('the lock holds, switches with C-left / C-right, and the gun only shows while aiming', () => {
+test('the lock holds, switches with C-left / C-right, and Mario holds his gun unless his hands are busy', () => {
     const { weapon, add, object, mario } = weaponRuntime()
     const centre = add(5, object(0, 1000, 1 << 15))
     const left = add(5, object(400, 1000, 1 << 15))
@@ -260,7 +261,18 @@ test('the lock holds, switches with C-left / C-right, and the gun only shows whi
     assert.equal(weapon.weaponState.target.object, left)
 
     mario.action = ACT_IDLE
-    assert.equal(weapon.geo_mario_gun(1, node), null)
+    assert.equal(weapon.geo_mario_gun(1, node)[0], 'pistol', 'he carries it when not aiming')
+    mario.heldObj = {}
+    assert.equal(weapon.geo_mario_gun(1, node), null, 'not while carrying something')
+    mario.heldObj = null
+    mario.action = ACT_IDLE | (1 << 13)
+    assert.equal(weapon.geo_mario_gun(1, node), null, 'not while swimming')
+    mario.action = ACT_IDLE
+    weapon.weaponState.index = 6
+    assert.equal(weapon.currentWeapon().id, 'fist')
+    assert.equal(weapon.geo_mario_gun(1, node), null, 'fists have nothing to hold')
+    assert.equal(weapon.canStartAiming(mario, { buttonDownAim: true }), false, 'and no gun to aim')
+    weapon.weaponState.index = 0
 })
 
 test('new aim locks choose the nearest enemy while held aim keeps a valid target stable', () => {
@@ -484,10 +496,11 @@ test('adding Luigi to shot candidates preserves enemy acquisition and held-lock 
 
 const weapons = () => runtime().load('game/Weapons.js')
 
-test('six distinct GTA weapon types, each with a gun model and muzzle flash', () => {
-    const { WEAPONS, nextWeapon } = weapons()
-    assert.deepEqual([...WEAPONS.map(w => w.type)], ['WEAPON_PISTOL', 'WEAPON_DESERT_EAGLE', 'WEAPON_SHOTGUN',
-        'WEAPON_MICRO_UZI', 'WEAPON_M4', 'WEAPON_SNIPERRIFLE'])
+test('six distinct GTA guns, each with a gun model and muzzle flash, then fists', () => {
+    const { WEAPONS: ALL, nextWeapon } = weapons()
+    assert.deepEqual([...ALL.map(w => w.type)], ['WEAPON_PISTOL', 'WEAPON_DESERT_EAGLE', 'WEAPON_SHOTGUN',
+        'WEAPON_MICRO_UZI', 'WEAPON_M4', 'WEAPON_SNIPERRIFLE', 'WEAPON_UNARMED'])
+    const WEAPONS = ALL.filter(w => !w.melee)
     // Every enum name really exists in gta-reversed's eWeaponType, when it's checked out next door.
     const enumFile = path.resolve(__dirname, '../../gta-reversed/source/game_sa/Enums/eWeaponType.h')
     if (fs.existsSync(enumFile)) {
@@ -504,7 +517,7 @@ test('six distinct GTA weapon types, each with a gun model and muzzle flash', ()
     }
     assert.equal(new Set(WEAPONS.map(w => JSON.stringify(mario_gun_dls[w.id].dl))).size, WEAPONS.length, 'models differ')
     assert.equal(nextWeapon(0), 1)
-    assert.equal(nextWeapon(WEAPONS.length - 1), 0)
+    assert.equal(nextWeapon(ALL.length - 1), 0)
     // Sniper outranges everything; the shotgun is short-range and multi-pellet.
     const byId = Object.fromEntries(WEAPONS.map(w => [w.id, w]))
     assert.ok(WEAPONS.every(w => w === byId.sniper || w.range < byId.sniper.range))
@@ -622,11 +635,12 @@ test('R cycles weapons, each with its own clip, and the hand shows the selected 
     const { weapon, mario } = weaponRuntime()
     mario.action = ACT_GUN_AIM
     const seen = []
-    for (let i = 0; i < 6; i++) {
-        seen.push(weapon.geo_mario_gun(1, { flags: 0 })[0])
+    for (let i = 0; i < 7; i++) {
+        const gun = weapon.geo_mario_gun(1, { flags: 0 })
+        seen.push(gun ? gun[0] : weapon.currentWeapon().id)
         weapon.updateWeaponHud({ buttonPressedNextWeapon: true })
     }
-    assert.deepEqual(seen, ['pistol', 'deagle', 'shotgun', 'smg', 'm4', 'sniper'])
+    assert.deepEqual(seen, ['pistol', 'deagle', 'shotgun', 'smg', 'm4', 'sniper', 'fist'])
     assert.equal(weapon.currentWeapon().id, 'pistol', 'wraps around')
     assert.ok(weapon.weaponState.hudFrames > 0, 'the panel shows the new gun')
     weapon.weaponState.index = 3
@@ -791,6 +805,7 @@ test('every actual muzzle points through the target using torso IK in idle and s
             camera: { pos: [-500, 500, -700], focus: [100, 120, 500], roll: -0.13 }, target: [260, 160, 520] },
     ]
     for (const [index, gun] of WEAPONS.entries()) {
+        if (gun.melee) continue
         weapon.weaponState.index = index
         const model = mario_gun_dls[gun.id]
         for (const source of sources) {

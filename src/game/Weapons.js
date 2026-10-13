@@ -24,6 +24,8 @@ export const WEAPONS = [
     { id: 'sniper', name: 'Sniper Rifle', type: 'WEAPON_SNIPERRIFLE',
         damage: 125, range: metres(100), clip: 1, interval: 40, reload: 40, auto: false, spread: 2,
         foregrip: [110, 0] },
+    // Bare hands: no gun to draw, so B punches and kicks the SM64 way.
+    { id: 'fist', name: 'Fist', type: 'WEAPON_UNARMED', melee: true },
 ]
 
 export const nextWeapon = index => (index + 1) % WEAPONS.length

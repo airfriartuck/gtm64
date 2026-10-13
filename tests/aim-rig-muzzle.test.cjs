@@ -72,7 +72,7 @@ test('all gun muzzle centre lines meet the target after quantized arm rotations'
         [[760, 430, -250], [-1900, -32000, 4200], 0.1875],
         [[150, -40, 800], [23000, -12000, 1600], 0.325],
     ]
-    for (const gun of WEAPONS) for (const point of targets) {
+    for (const gun of WEAPONS.filter(w => !w.melee)) for (const point of targets) {
         const muzzle = models[gun.id].muzzle
         const aim = { point, dir: [0, 1, 0], up: [1, 0, 0], muzzleHeight: muzzle[1] }
         const solved = gun.foregrip ? rig.solveTwoHanded(aim, gun.foregrip)

@@ -10,7 +10,7 @@ import { readClump, frameToClump } from "./ps2Model"
 const msgpack = require("msgpack-lite")
 
 const STORAGE_KEY = 'gtaAssets'
-const ASSET_VERSION = 2
+const ASSET_VERSION = 3
 
 // Mario's weapons (Weapons.js ids) and the SA model each one uses.
 export const GTA_WEAPON_MODELS = {
@@ -73,6 +73,12 @@ export const extractGtaAssets = async read => {
     for (const [id, model] of Object.entries(GTA_WEAPON_MODELS)) {
         weapons[id] = extractWeapon(model, await readEntry(`${model}.dff`), await readEntry(`${model}.txd`))
     }
+    // Fists have no model; their icon is in the HUD's own dictionary.
+    const hud = await findIsoFile(read, 'MODELS/HUD.TXD')
+    if (!hud) throw new Error('This disc image is missing MODELS/HUD.TXD')
+    const fist = readTextureDictionary(await read(hud.offset, hud.size)).get('fist')
+    if (!fist) throw new Error('HUD.TXD has no fist icon')
+    weapons.fist = { meshes: [], textures: {}, icon: fist }
     return { version: ASSET_VERSION, weapons }
 }
 

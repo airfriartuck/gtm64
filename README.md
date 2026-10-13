@@ -235,10 +235,17 @@ the gun's spread.
 | Micro SMG | 20 | 30 m | 50 | automatic |
 | M4 | 30 | 45 m | 50 | automatic |
 | Sniper Rifle | 125 | 100 m | 1 | semi-auto |
+| Fist | — | — | — | SM64 punches and kicks |
+
+As in GTA, Mario carries his current gun in his right hand at all times, not
+just while aiming, except while carrying something, swimming, hanging, on a
+pole or in the car. After the sniper rifle, switching guns brings up his
+**Fist**: no gun, so the aim button does nothing and **B** punches and kicks
+as usual.
 
 The guns are GTA San Andreas's own models and textures, read from your PS2
 disc image (see [Game files you supply](#game-files-you-supply)) and drawn with
-SM64's lighting. The top-left corner shows the current gun's SA HUD icon and
+SM64's lighting. The top-left corner shows the current weapon's SA HUD icon and
 its ammo (rounds in the clip, then the clip size), with the gun's name for a
 moment after switching.
 

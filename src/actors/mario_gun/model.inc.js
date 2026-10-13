@@ -138,6 +138,7 @@ const gtaDisplayList = (gun, flashBoxes) => {
 // Swap in GTA's guns, keyed by weapon id like `mario_gun_dls`.
 export const installGtaGuns = guns => {
     for (const [id, gun] of Object.entries(guns)) {
+        if (!gun.meshes.length) continue
         const muzzle = [Math.round(GTA_GRIP + gun.muzzle[0] * GTA_SCALE), Math.round(gun.muzzle[2] * GTA_SCALE)]
         mario_gun_dls[id] = { muzzle, dl: gtaDisplayList(gun), flashDl: gtaDisplayList(gun, flash(muzzle)) }
     }
