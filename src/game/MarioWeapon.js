@@ -375,22 +375,45 @@ const updateTargetMarker = canvas => {
     marker.style.borderTopColor = `rgb(${Targeting.markerColour(target.health).join(',')})`
 }
 
-// Weapon name and ammo, shown while aiming and briefly after switching.
-const updateWeaponPanel = canvas => {
-    if (!panel) {
-        panel = document.createElement('div')
-        panel.id = 'weapon-panel'
-        panel.style.cssText = 'position:fixed;z-index:1000;pointer-events:none;transform:translateY(-100%);'
-            + 'padding:6px 12px;border-radius:6px;background:rgba(15,20,30,.82);color:#fff;'
-            + 'font:600 14px sans-serif;white-space:nowrap'
-        document.body.appendChild(panel)
+// GTA's weapon HUD in the top-left corner: the current gun's icon from the
+// player's San Andreas disc, its ammo, and its name briefly after switching.
+let weaponIcons = {}
+export const setWeaponIcons = icons => {
+    weaponIcons = {}
+    for (const [id, { width, height, rgba }] of Object.entries(icons)) {
+        const canvas = document.createElement('canvas')
+        canvas.width = width
+        canvas.height = height
+        canvas.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(rgba), width, height), 0, 0)
+        weaponIcons[id] = canvas.toDataURL()
     }
-    panel.hidden = !(isAiming() || weaponState.hudFrames > 0)
-    if (panel.hidden) return
+}
+
+const createWeaponPanel = () => {
+    const element = document.createElement('div')
+    element.id = 'weapon-panel'
+    element.style.cssText = 'position:fixed;z-index:1000;pointer-events:none;display:flex;align-items:center;gap:6px;'
+        + 'color:#fff;font:700 18px sans-serif;white-space:nowrap;'
+        + 'text-shadow:-2px 0 #000,2px 0 #000,0 -2px #000,0 2px #000'
+    element.innerHTML = '<img alt="" style="width:64px;height:64px;image-rendering:auto">'
+        + '<div><div data-ammo></div><div data-name style="font-size:13px"></div></div>'
+    document.body.appendChild(element)
+    return element
+}
+
+const updateWeaponPanel = canvas => {
+    if (!panel) panel = createWeaponPanel()
     const weapon = currentWeapon(), ammo = weaponState.ammo[weaponState.index]
-    const text = `${weapon.name} · ${ammo.reload > 0 ? 'Reloading' : `${ammo.clip} / ${weapon.clip}`}`
-    if (panel.textContent !== text) panel.textContent = text
-    placeOnCanvas(panel, canvas, 12, canvas.height - 12)
+    const icon = panel.querySelector('img'), src = weaponIcons[weapon.id] || ''
+    if (icon.getAttribute('src') !== src) icon.setAttribute('src', src)
+    icon.hidden = !src
+    const ammoText = ammo.reload > 0 ? 'Reloading' : `${ammo.clip}-${weapon.clip}`
+    const nameText = weaponState.hudFrames > 0 || !src ? weapon.name : ''
+    const ammoElement = panel.querySelector('[data-ammo]'), nameElement = panel.querySelector('[data-name]')
+    if (ammoElement.textContent !== ammoText) ammoElement.textContent = ammoText
+    if (nameElement.textContent !== nameText) nameElement.textContent = nameText
+    // Below SM64's lives counter.
+    placeOnCanvas(panel, canvas, canvas.width * 0.04, canvas.height * 0.13)
 }
 
 // Called once per rendered frame: weapon switching (R / right bumper), the

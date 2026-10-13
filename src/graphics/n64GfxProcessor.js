@@ -435,6 +435,13 @@ export class n64GfxProcessor {
 
     }
 
+    // RGBA32 textures (GTA's guns) are already 8-bit RGBA bytes.
+    import_texture_rgba32(tile) {
+        const width = this.rdp.texture_tile.line_size_bytes / 4
+        const height = this.rdp.loaded_texture[tile].size_bytes / this.rdp.texture_tile.line_size_bytes
+        WebGL.upload_texture(this.rdp.loaded_texture[tile].textureData, width, height)
+    }
+
     import_texture(tile) {
         const fmt = this.rdp.texture_tile.fmt
         const siz = this.rdp.texture_tile.siz
@@ -444,6 +451,8 @@ export class n64GfxProcessor {
         if (fmt == Gbi.G_IM_FMT_RGBA) {
             if (siz == Gbi.G_IM_SIZ_16b) {
                 this.import_texture_rgba16(tile)
+            } else if (siz == Gbi.G_IM_SIZ_32b) {
+                this.import_texture_rgba32(tile)
             } else {
                 throw "unimplemented texture size"
             }
@@ -882,7 +891,7 @@ export class n64GfxProcessor {
     }
 
     dp_set_tile(fmt, siz, line, tmem, tile, palette, cmt, cms) {
-        if (siz == Gbi.G_IM_SIZ_32b) throw "unsupported tile size JS"
+        if (siz == Gbi.G_IM_SIZ_32b && fmt != Gbi.G_IM_FMT_RGBA) throw "unsupported tile size JS"
 
         if (tile == Gbi.G_TX_RENDERTILE) {
             if (palette != 0) throw "unsupported palette"
@@ -951,7 +960,8 @@ export class n64GfxProcessor {
         }
         const size_bytes = (lrs + 1) << word_size_shift
         this.rdp.loaded_texture[this.rdp.texture_to_load.tile_number].size_bytes = size_bytes
-        if (size_bytes > 4096) throw "bug: too big texture"
+        // TMEM holds 4KB; RGBA32 textures loaded from GTA are bigger and bypass it.
+        if (size_bytes > 4096 && this.rdp.texture_to_load.size != Gbi.G_IM_SIZ_32b) throw "bug: too big texture"
         this.rdp.loaded_texture[this.rdp.texture_to_load.tile_number].textureData = this.rdp.texture_to_load.textureData
         this.rdp.textures_changed[this.rdp.texture_to_load.tile_number] = true
     }

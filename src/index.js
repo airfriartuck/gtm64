@@ -8,12 +8,17 @@ import { SEQ_MENU_TITLE_SCREEN } from "./include/seq_ids"
 import { getGardenCar } from './game/GardenCar'
 import { luigiCarDialogue } from './game/LuigiCarDialogue'
 import { getLuigiCompanion } from './game/LuigiCompanion'
-import { updateWeaponHud } from './game/MarioWeapon'
+import { updateWeaponHud, setWeaponIcons } from './game/MarioWeapon'
 import { checkForGtaAssets, loadGtaAssetsFromFile, onGtaAssetsLoaded } from './gta/gtaAssets'
+import { installGtaGuns } from './actors/mario_gun/model.inc'
 import { requirementMet, allRequirementsMet } from './gameRequirements'
 
-// The game also needs assets from the player's GTA San Andreas disc.
-onGtaAssetsLoaded(() => requirementMet('gta'))
+// Mario's guns and HUD icons come from the player's GTA San Andreas disc.
+onGtaAssetsLoaded(({ weapons }) => {
+    installGtaGuns(weapons)
+    setWeaponIcons(Object.fromEntries(Object.entries(weapons).map(([id, weapon]) => [id, weapon.icon])))
+    requirementMet('gta')
+})
 
 const gtaMessage = document.getElementById('gtaMessage')
 document.getElementById('gtaSelect').addEventListener('submit', async event => {

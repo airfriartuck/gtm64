@@ -236,6 +236,12 @@ the gun's spread.
 | M4 | 30 | 45 m | 50 | automatic |
 | Sniper Rifle | 125 | 100 m | 1 | semi-auto |
 
+The guns are GTA San Andreas's own models and textures, read from your PS2
+disc image (see [Game files you supply](#game-files-you-supply)) and drawn with
+SM64's lighting. The top-left corner shows the current gun's SA HUD icon and
+its ammo (rounds in the clip, then the clip size), with the gun's name for a
+moment after switching.
+
 Mario's arms are solved each frame so the barrel points at the target in any
 pose. He holds the pistol, Desert Eagle and Micro SMG in one hand from a bladed
 stance, and squares up to hold the shotgun, M4 and sniper rifle with both hands,

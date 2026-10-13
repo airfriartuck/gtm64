@@ -85,3 +85,60 @@ const flash = ([x, y]) => [
 export const mario_gun_dls = Object.fromEntries(Object.entries(guns).map(([id, gun]) =>
     [id, { muzzle: gun.muzzle, dl: displayList(gun.boxes), flashDl: displayList([...gun.boxes, ...flash(gun.muzzle)]) }]))
 
+
+// GTA San Andreas's own gun models, read from the player's disc (see
+// src/gta/gtaAssets.js), replace the boxes once they're loaded.
+// GTA models are in metres with the barrel along +X and Z up; Mario's hand
+// space has Y up, so a model point (x, y, z) lands at (x, z, -y) * scale,
+// moved so the grip sits in Mario's fist and the gun is centred on the hand.
+const GTA_SCALE = 700
+const GTA_GRIP = 45
+const gtaLights = Gbi.gdSPDefLights1(0x60, 0x60, 0x60, 0xFF, 0xFF, 0xFF, 0x28, 0x28, 0x28)
+
+const wrap = Gbi.G_TX_WRAP | Gbi.G_TX_NOMIRROR
+const loadTexture = ({ width, height, rgba }) => [
+    Gbi.gsDPSetTextureImage(Gbi.G_IM_FMT_RGBA, Gbi.G_IM_SIZ_32b, 1, rgba),
+    Gbi.gsDPSetTile(Gbi.G_IM_FMT_RGBA, Gbi.G_IM_SIZ_32b, 0, 0, Gbi.G_TX_LOADTILE, 0, wrap, Gbi.G_TX_NOMASK, Gbi.G_TX_NOLOD,
+        wrap, Gbi.G_TX_NOMASK, Gbi.G_TX_NOLOD),
+    Gbi.gsDPLoadBlock(Gbi.G_TX_LOADTILE, 0, 0, width * height - 1),
+    Gbi.gsDPSetTile(Gbi.G_IM_FMT_RGBA, Gbi.G_IM_SIZ_32b, width / 2, 0, Gbi.G_TX_RENDERTILE, 0, wrap, Gbi.G_TX_NOMASK,
+        Gbi.G_TX_NOLOD, wrap, Gbi.G_TX_NOMASK, Gbi.G_TX_NOLOD),
+    Gbi.gsDPSetTileSize(Gbi.G_TX_RENDERTILE, 0, 0, (width - 1) << Gbi.G_TEXTURE_IMAGE_FRAC, (height - 1) << Gbi.G_TEXTURE_IMAGE_FRAC),
+]
+
+const gtaDisplayList = (gun, flashBoxes) => {
+    const toHand = ([x, y, z]) => [Math.round(GTA_GRIP + x * GTA_SCALE), Math.round(z * GTA_SCALE),
+        Math.round((gun.centreY - y) * GTA_SCALE)]
+    const normalByte = value => Math.round(value * 127) & 0xFF
+    const meshes = gun.meshes.map(part => {
+        const texture = gun.textures[part.texture]
+        const triangles = part.triangles.map(triangle => [Gbi.gsSPVertex(triangle.map(i => {
+            const [nx, ny, nz] = part.normals[i]
+            return [toHand(part.positions[i]), 0,
+                [Math.round(part.uvs[i][0] * texture.width * 32), Math.round(part.uvs[i][1] * texture.height * 32)],
+                [normalByte(nx), normalByte(nz), normalByte(-ny), 255]]
+        }), 3, 0), Gbi.gsSP1Triangle(0, 1, 2, 0)])
+        return [...loadTexture(texture), ...triangles]
+    })
+    return [
+        Gbi.gsDPPipeSync(),
+        Gbi.gsDPSetCombineMode(Gbi.G_CC_MODULATERGB, Gbi.G_CC_MODULATERGB),
+        Gbi.gsSPSetLights1(gtaLights),
+        Gbi.gsSPSetGeometryMode(Gbi.G_LIGHTING),
+        Gbi.gsSPClearGeometryMode(Gbi.G_CULL_BACK),
+        Gbi.gsSPTexture(0xFFFF, 0xFFFF, 0, Gbi.G_TX_RENDERTILE, Gbi.G_ON),
+        ...meshes,
+        Gbi.gsSPTexture(0xFFFF, 0xFFFF, 0, Gbi.G_TX_RENDERTILE, Gbi.G_OFF),
+        Gbi.gsDPPipeSync(),
+        ...(flashBoxes ? displayList(flashBoxes) : [Gbi.gsSPSetGeometryMode(Gbi.G_CULL_BACK), Gbi.gsDPSetCombineMode(Gbi.G_CC_SHADE),
+            Gbi.gsSPEndDisplayList()]),
+    ].flat(Infinity)
+}
+
+// Swap in GTA's guns, keyed by weapon id like `mario_gun_dls`.
+export const installGtaGuns = guns => {
+    for (const [id, gun] of Object.entries(guns)) {
+        const muzzle = [Math.round(GTA_GRIP + gun.muzzle[0] * GTA_SCALE), Math.round(gun.muzzle[2] * GTA_SCALE)]
+        mario_gun_dls[id] = { muzzle, dl: gtaDisplayList(gun), flashDl: gtaDisplayList(gun, flash(muzzle)) }
+    }
+}
