@@ -144,6 +144,7 @@ const gamepadButtonMapping = {
 const defaultGamepadButtonMapping = { ...gamepadButtonMapping }
 
 let deadzone = 0.3
+const cameraDeadzone = 0.2
 
 if (localStorage['controls']) {
     Object.assign(keyboardButtonMapping, JSON.parse(localStorage['controls']).keyboard)
@@ -276,7 +277,7 @@ export const playerInputUpdate = () => {
         keyboardFinal[key] = Boolean(keyboardButtons[value])
     })
 
-    let stickX = 0, stickY = 0, gamepad
+    let stickX = 0, stickY = 0, cameraStickX = 0, cameraStickY = 0, gamepad
     if (navigator.getGamepads) {
         gamepad = navigator.getGamepads()[gamepadIndex]
     }
@@ -305,6 +306,9 @@ export const playerInputUpdate = () => {
         }
         const cStickX = gamepad.axes[gamepadButtonMapping['cStickX']]
         const cStickY = gamepad.axes[gamepadButtonMapping['cStickY']]
+        // The right stick also turns the camera freely (up is positive).
+        cameraStickX = applyDeadzone(cStickX || 0, cameraDeadzone)
+        cameraStickY = -applyDeadzone(cStickY || 0, cameraDeadzone)
         Object.assign(gamepadFinal, {
             a: padButton('a'),
             b: padButton('b'),
@@ -359,6 +363,7 @@ export const playerInputUpdate = () => {
         buttonDownVehicle: Boolean(keyboardButtons.e),
         stickX, stickY,
         stickMag: mag,
+        cameraStickX, cameraStickY,
 
         buttonPressedA: buttonDownA && !window.playerInput.buttonDownA,
         buttonPressedStart: buttonDownStart && !window.playerInput.buttonDownStart,

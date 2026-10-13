@@ -219,6 +219,13 @@ const D_CBUTTONS =	0x0004
 const U_CBUTTONS =	0x0008
 export const CBUTTON_MASK = (U_CBUTTONS | D_CBUTTONS | L_CBUTTONS | R_CBUTTONS)
 
+// Right stick free camera: how fast it orbits Mario and raises or lowers
+// Lakitu at full tilt, and how far it can be raised or lowered.
+const FREE_CAM_YAW_SPEED = 0x300
+const FREE_CAM_HEIGHT_SPEED = 20.0
+const FREE_CAM_HEIGHT_MIN = -100.0
+const FREE_CAM_HEIGHT_MAX = 500.0
+
 export const CAM_EVENT_CANNON              = 1
 export const CAM_EVENT_SHOT_FROM_CANNON    = 2
 export const CAM_EVENT_UNUSED_3            = 3
@@ -493,6 +500,8 @@ class Camera {
         this.floor = null
 
         this.gCameraMovementFlags = 0
+        this.sFreeCamHeight = 0
+        this.sFreeCamUsed = false
 
         this.gPlayerCameraState = {
             action: 0,
@@ -2981,13 +2990,17 @@ class Camera {
 
         // Determine how fast to rotate the camera
         if (this.sCSideButtonYaw == 0) {
-            if (c.mode == CAMERA_MODE_FREE_ROAM) {
+            if (this.is_free_roam_mode(c.mode)) {
                 nextYawVel = 0xC0
             } else {
                 nextYawVel = 0x100
             }
             if ((window.playerInput.stickX != 0 || window.playerInput.stickY != 0) != 0) {
                 nextYawVel = 0x20
+            } else if (this.sFreeCamUsed) {
+                // Once the camera has been turned by hand, standing still no
+                // longer swings it back behind Mario.
+                nextYawVel = 0
             }
         } else {
             if (this.sCSideButtonYaw < 0) {
@@ -3027,6 +3040,20 @@ class Camera {
                 dist = wrapper.dist; pitch = wrapper.pitch; yaw = wrapper.yaw
             }
             closeToMario |= 1
+        }
+
+        // The right stick orbits the camera around Mario and raises or lowers
+        // it. While aiming, flicking it sideways switches targets instead.
+        const freeCamX = window.playerInput.buttonDownAim ? 0 : (window.playerInput.cameraStickX || 0)
+        const freeCamY = window.playerInput.cameraStickY || 0
+        if (freeCamX != 0) {
+            yaw = s16(yaw - freeCamX * FREE_CAM_YAW_SPEED)
+            nextYawVel = 0
+            this.sFreeCamUsed = true
+        }
+        if (freeCamY != 0) {
+            this.sFreeCamHeight = Math.min(FREE_CAM_HEIGHT_MAX, Math.max(FREE_CAM_HEIGHT_MIN,
+                this.sFreeCamHeight - freeCamY * FREE_CAM_HEIGHT_SPEED))
         }
 
         if (-16 < window.playerInput.stickY) {
@@ -3161,7 +3188,7 @@ class Camera {
         }
 
         posHeight = 0.0
-        if (c.mode == CAMERA_MODE_FREE_ROAM) {
+        if (this.is_free_roam_mode(c.mode)) {
             if (this.gCameraMovementFlags & CAM_MOVE_ZOOMED_OUT) {
                 posHeight = 375
                 if (this.gCurrLevelArea == AREA_SSL_PYRAMID) {
@@ -3201,7 +3228,7 @@ class Camera {
             vec3f_copy(c.focus, this.gPlayerCameraState.pos)
         }
         if (camFloorHeight != FLOOR_LOWER_LIMIT) {
-            camFloorHeight += posHeight
+            camFloorHeight += posHeight + this.sFreeCamHeight
             this.approach_camera_height(c, camFloorHeight, 20.0)
         }
         c.pos[0] = cPos[0]
@@ -3238,6 +3265,13 @@ class Camera {
         }
         return yaw
 
+    }
+
+    /**
+     * Radial modes play as free roam, so the player can turn the camera anywhere.
+     */
+    is_free_roam_mode(mode) {
+        return mode == CAMERA_MODE_FREE_ROAM || mode == CAMERA_MODE_RADIAL || mode == CAMERA_MODE_OUTWARD_RADIAL
     }
 
     /**
@@ -3429,7 +3463,7 @@ class Camera {
 
             // Search for an open direction to zoom out in, if the camera is changing to close, free roam,
             // or spiral-stairs mode
-            if (this.sModeInfo.lastMode == CAMERA_MODE_SPIRAL_STAIRS || this.sModeInfo.lastMode == CAMERA_MODE_CLOSE || this.sModeInfo.lastMode == CAMERA_MODE_FREE_ROAM) {
+            if (this.sModeInfo.lastMode == CAMERA_MODE_SPIRAL_STAIRS || this.sModeInfo.lastMode == CAMERA_MODE_CLOSE || this.is_free_roam_mode(this.sModeInfo.lastMode)) {
                 searching = 1
                 // Check the whole circle around Mario for an open direction to zoom out to
                 for (sector = 0; sector < 16 && searching == 1; sector++) {
@@ -3977,13 +4011,12 @@ class Camera {
                         this.mode_8_directions_camera(c);
                         break;
 
+                    // Radial modes would aim at the course's center; the free
+                    // roam camera lets the right stick turn it anywhere instead.
                     case CAMERA_MODE_RADIAL:
-                        this.mode_radial_camera(c);
-                        break;
-
                     case CAMERA_MODE_OUTWARD_RADIAL:
-                        this.mode_outward_radial_camera(c);
-                        break;
+                        this.mode_lakitu_camera(c)
+                        break
 
                     case CAMERA_MODE_CLOSE:
                         this.mode_lakitu_camera(c)
@@ -4093,6 +4126,8 @@ class Camera {
         this.sZeroZoomDist = 0
         this.sBehindMarioSoundTimer = 0;
         this.sCSideButtonYaw = 0;
+        this.sFreeCamHeight = 0
+        this.sFreeCamUsed = false
         this.s8DirModeBaseYaw = 0;
         this.s8DirModeYawOffset = 0;
         c.doorStatus = DOOR_DEFAULT
@@ -5715,6 +5750,12 @@ class Camera {
      */
     handle_c_button_movement(c) {
         let cSideYaw
+
+        // While the right stick turns the camera freely, its C-button presses
+        // don't also zoom or snap it.
+        if (window.playerInput.cameraStickX || window.playerInput.cameraStickY) {
+            return
+        }
     
         // Zoom in
         if (window.playerInput.buttonPressedCu) {

@@ -68,3 +68,16 @@ test('saved controls still win, and missing buttons read as released', () => {
     pad.buttons.length = 10
     assert.equal(read().buttonDownAim, false)
 })
+
+test('the right stick reports analog camera input with a small deadzone', () => {
+    const { read, pad } = inputManager()
+    pad.axes = [0, 0, 0.1, -0.1]
+    let input = read()
+    assert.equal(input.cameraStickX, 0, 'resting drift is ignored')
+    assert.equal(input.cameraStickY, 0)
+    pad.axes = [0, 0, 0.6, -1]
+    input = read()
+    assert.ok(input.cameraStickX > 0.4 && input.cameraStickX < 0.6, 'partial tilt turns the camera partway')
+    assert.equal(input.cameraStickY, 1, 'up is positive')
+    assert.ok(input.stickX == 0 && input.stickY == 0, 'the left stick is unaffected')
+})
