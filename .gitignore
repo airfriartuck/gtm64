@@ -14,3 +14,6 @@ extractTools/skyconv.exe
 # Game discs the player supplies
 *.iso
 *.7z
+
+# Local agent instructions
+/CLAUDE.local.md
